@@ -4,3 +4,5 @@ data/*.db*
 uploads/*
 !uploads/.gitkeep
 !data/.gitkeep
+.vercel
+.env*
