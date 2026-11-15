@@ -6,21 +6,15 @@ const cookieSession = require('cookie-session');
 const multer = require('multer');
 const db = require('./db');
 const storage = require('./storage');
+const mail = require('./mail');
+const mountAuth = require('./auth');
 
 const PORT = process.env.PORT || 3000;
 const BASE_URL = (process.env.BASE_URL
   || (process.env.VERCEL_PROJECT_PRODUCTION_URL && `https://${process.env.VERCEL_PROJECT_PRODUCTION_URL}`)
   || `http://localhost:${PORT}`).replace(/\/$/, '');
-const CAS_URL = (process.env.CAS_URL || 'https://fed.princeton.edu/cas').replace(/\/$/, '');
 const IS_PROD = process.env.NODE_ENV === 'production' || !!process.env.VERCEL;
-const MS_CLIENT_ID = process.env.MS_CLIENT_ID;
-const MS_CLIENT_SECRET = process.env.MS_CLIENT_SECRET;
-// Set MS_TENANT to Princeton's Entra tenant ID once known; 'organizations' accepts any work/school account
-// and we then require a @princeton.edu address below.
-const MS_TENANT = process.env.MS_TENANT || 'organizations';
-const MS_ENABLED = !!(MS_CLIENT_ID && MS_CLIENT_SECRET);
 const ALLOWED_DOMAIN = (process.env.ALLOWED_DOMAIN || 'princeton.edu').toLowerCase();
-const DEV_LOGIN = !IS_PROD && process.env.DEV_LOGIN === 'true';
 
 if (IS_PROD && !process.env.SESSION_SECRET) {
   throw new Error('SESSION_SECRET must be set in production');
@@ -51,10 +45,9 @@ app.use(cookieSession({
 app.use(async (req, res, next) => {
   if (!req.session.csrf) req.session.csrf = crypto.randomBytes(24).toString('hex');
   req.user = req.session.userId ? await db.one('SELECT * FROM users WHERE id = $1', [req.session.userId]) : null;
+  if (req.user && req.user.session_version !== (req.session.sv || 0)) { req.user = null; req.session.userId = null; }
   res.locals.user = req.user;
   res.locals.csrf = req.session.csrf;
-  res.locals.devLogin = DEV_LOGIN;
-  res.locals.msEnabled = MS_ENABLED;
   res.locals.flash = req.session.flash || null;
   req.session.flash = null;
   res.locals.path = req.path;
@@ -72,6 +65,7 @@ function go(req, res, url) {
 
 function requireAuth(req, res, next) {
   if (!req.user) return res.redirect('/login?next=' + encodeURIComponent(req.originalUrl));
+  if (mail.enabled && !req.user.email_verified) return res.redirect('/verify');
   if (!req.user.name && !req.path.startsWith('/profile')) return res.redirect('/profile?welcome=1');
   next();
 }
@@ -114,97 +108,8 @@ app.get('/photos/:key', async (req, res) => {
   if (!(await storage.send(req.params.key, res))) res.sendStatus(404);
 });
 
-// ---------- auth: Princeton CAS ----------
-async function logIn(req, netid) {
-  const u = await db.one(
-    `INSERT INTO users (netid) VALUES ($1) ON CONFLICT (netid) DO UPDATE SET netid = EXCLUDED.netid RETURNING id`, [netid]);
-  req.session.userId = u.id;
-  return u.id;
-}
-
-app.get('/login', (req, res) => {
-  if (req.user) return res.redirect(safeNext(req.query.next));
-  res.render('login', { title: 'Log in', next: safeNext(req.query.next) });
-});
-
-app.get('/login/cas', (req, res) => {
-  req.session.next = safeNext(req.query.next);
-  res.redirect(`${CAS_URL}/login?service=${encodeURIComponent(`${BASE_URL}/auth/cas`)}`);
-});
-
-app.get('/auth/cas', async (req, res) => {
-  const ticket = req.query.ticket;
-  if (!ticket) return res.redirect('/login');
-  const service = `${BASE_URL}/auth/cas`;
-  try {
-    const url = `${CAS_URL}/serviceValidate?service=${encodeURIComponent(service)}&ticket=${encodeURIComponent(ticket)}`;
-    const xml = await (await fetch(url)).text();
-    const m = xml.match(/<cas:user>\s*([^<\s]+)\s*<\/cas:user>/);
-    if (!m) throw new Error('CAS validation failed: ' + xml.slice(0, 300));
-    await logIn(req, m[1].toLowerCase());
-    const next = req.session.next; req.session.next = null;
-    res.redirect(safeNext(next));
-  } catch (e) {
-    console.error(e);
-    res.status(401).render('error', { title: 'Login failed', message: 'We could not verify your Princeton login. Please try again.' });
-  }
-});
-
-// ---------- auth: Microsoft (Princeton Outlook account) ----------
-if (MS_ENABLED) {
-  const msBase = `https://login.microsoftonline.com/${MS_TENANT}/oauth2/v2.0`;
-  const redirectUri = `${BASE_URL}/auth/microsoft`;
-  const scope = 'openid profile email User.Read';
-
-  app.get('/login/microsoft', (req, res) => {
-    req.session.next = safeNext(req.query.next);
-    req.session.msState = crypto.randomBytes(16).toString('hex');
-    const params = new URLSearchParams({
-      client_id: MS_CLIENT_ID, response_type: 'code', redirect_uri: redirectUri, response_mode: 'query',
-      scope, state: req.session.msState, domain_hint: ALLOWED_DOMAIN, prompt: 'select_account',
-    });
-    res.redirect(`${msBase}/authorize?${params}`);
-  });
-
-  app.get('/auth/microsoft', async (req, res) => {
-    const fail = (message) => res.status(401).render('error', { title: 'Login failed', message });
-    const { code, state } = req.query;
-    const expected = req.session.msState; req.session.msState = null;
-    if (!code || !state || state !== expected) return fail('Your login session expired. Please try again.');
-    try {
-      const token = await (await fetch(`${msBase}/token`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-        body: new URLSearchParams({
-          client_id: MS_CLIENT_ID, client_secret: MS_CLIENT_SECRET, grant_type: 'authorization_code',
-          code, redirect_uri: redirectUri, scope,
-        }),
-      })).json();
-      if (!token.access_token) throw new Error('Token exchange failed: ' + JSON.stringify(token));
-      const me = await (await fetch('https://graph.microsoft.com/v1.0/me?$select=userPrincipalName,displayName', {
-        headers: { Authorization: `Bearer ${token.access_token}` },
-      })).json();
-      const [netid, domain] = String(me.userPrincipalName || '').toLowerCase().split('@');
-      if (!netid || domain !== ALLOWED_DOMAIN) return fail(`Please sign in with your @${ALLOWED_DOMAIN} account.`);
-      const id = await logIn(req, netid.replace(/[^a-z0-9._-]/g, ''));
-      if (me.displayName) await db.all('UPDATE users SET name = COALESCE(name, $1) WHERE id = $2', [me.displayName.slice(0, 80), id]);
-      const next = req.session.next; req.session.next = null;
-      res.redirect(safeNext(next));
-    } catch (e) {
-      console.error(e);
-      fail('We could not verify your Microsoft login. Please try again.');
-    }
-  });
-}
-
-if (DEV_LOGIN) {
-  app.post('/login/dev', checkCsrf, async (req, res) => {
-    const netid = clean(req.body.netid, 20).toLowerCase().replace(/[^a-z0-9]/g, '');
-    if (!netid) return res.redirect('/login');
-    await logIn(req, netid);
-    res.redirect(safeNext(req.body.next));
-  });
-}
+// ---------- auth ----------
+mountAuth(app, { checkCsrf, flash, safeNext, clean, BASE_URL, ALLOWED_DOMAIN });
 
 app.post('/logout', checkCsrf, (req, res) => {
   req.session = null;
@@ -388,8 +293,8 @@ app.get('/closet', requireAuth, async (req, res) => {
   const listings = await attachPhotos(await db.all('SELECT * FROM dresses WHERE owner_id = $1 ORDER BY created_at DESC', [req.user.id]));
   const base = `
     SELECT r.*, d.title AS dress_title, sd.title AS swap_title,
-           o.name AS owner_name, o.netid AS owner_netid, o.phone AS owner_phone,
-           b.name AS borrower_name, b.netid AS borrower_netid, b.phone AS borrower_phone,
+           o.name AS owner_name, o.email AS owner_email, o.phone AS owner_phone,
+           b.name AS borrower_name, b.email AS borrower_email, b.phone AS borrower_phone,
            b.class_year AS borrower_year, b.college AS borrower_college
     FROM requests r
     JOIN dresses d ON d.id = r.dress_id
@@ -418,4 +323,3 @@ app.use((err, req, res, next) => {
 module.exports = app;
 module.exports.BASE_URL = BASE_URL;
 module.exports.PORT = PORT;
-module.exports.DEV_LOGIN = DEV_LOGIN;

@@ -1,0 +1,17 @@
+<%- include('partials/header') %>
+<section class="narrow card">
+  <h1>Create an account</h1>
+  <p class="note">You must sign up with your <strong>@<%= domain %> school email</strong>. Personal emails (Gmail, etc.) won't work.<%= emailEnabled ? ' We’ll email you a code to confirm it’s yours.' : '' %></p>
+  <form method="post" action="/signup" class="stack">
+    <input type="hidden" name="_csrf" value="<%= csrf %>">
+    <input type="hidden" name="next" value="<%= next %>">
+    <label>School email
+      <input type="email" name="email" value="<%= email %>" placeholder="netid@<%= domain %>" required autocomplete="username" pattern=".+@<%= domain.replace(/\./g, '\\.') %>" title="Use your @<%= domain %> email">
+    </label>
+    <label>Password <input type="password" name="password" required minlength="8" autocomplete="new-password" placeholder="At least 8 characters"></label>
+    <label>Confirm password <input type="password" name="confirm" required minlength="8" autocomplete="new-password"></label>
+    <button class="btn big">Create account</button>
+  </form>
+  <p class="links">Already have an account? <a href="/login?next=<%= encodeURIComponent(next) %>">Log in</a></p>
+</section>
+<%- include('partials/footer') %>
