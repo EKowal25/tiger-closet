@@ -1,24 +1,16 @@
 <%- include('partials/header') %>
-<section class="narrow card center">
+<section class="narrow card">
   <h1>Log in</h1>
-  <p>Tiger Closet is only open to the Princeton community.</p>
-  <div class="stack" style="align-items:center">
-    <a class="btn big" href="/login/cas?next=<%= encodeURIComponent(next) %>">Continue with Princeton CAS</a>
-    <% if (msEnabled) { %>
-      <a class="btn big ms" href="/login/microsoft?next=<%= encodeURIComponent(next) %>">
-        <svg width="18" height="18" viewBox="0 0 21 21" aria-hidden="true"><rect width="10" height="10" fill="#f25022"/><rect x="11" width="10" height="10" fill="#7fba00"/><rect y="11" width="10" height="10" fill="#00a4ef"/><rect x="11" y="11" width="10" height="10" fill="#ffb900"/></svg>
-        Sign in with Princeton Microsoft account
-      </a>
-    <% } %>
-  </div>
-  <% if (devLogin) { %>
-    <form method="post" action="/login/dev" class="dev">
-      <p class="muted">Development mode: log in as any NetID</p>
-      <input type="hidden" name="_csrf" value="<%= csrf %>">
-      <input type="hidden" name="next" value="<%= next %>">
-      <input name="netid" placeholder="netid" required>
-      <button class="btn ghost">Dev log in</button>
-    </form>
-  <% } %>
+  <p class="note">Tiger Closet is only for Princeton students. <strong>Use your @<%= domain %> school email.</strong></p>
+  <form method="post" action="/login" class="stack">
+    <input type="hidden" name="_csrf" value="<%= csrf %>">
+    <input type="hidden" name="next" value="<%= next %>">
+    <label>School email
+      <input type="email" name="email" value="<%= email %>" placeholder="netid@<%= domain %>" required autocomplete="username" pattern=".+@<%= domain.replace(/\./g, '\\.') %>" title="Use your @<%= domain %> email">
+    </label>
+    <label>Password <input type="password" name="password" required autocomplete="current-password"></label>
+    <button class="btn big">Log in</button>
+  </form>
+  <p class="links"><a href="/signup?next=<%= encodeURIComponent(next) %>">Create an account</a> · <a href="/forgot">Forgot password?</a></p>
 </section>
 <%- include('partials/footer') %>

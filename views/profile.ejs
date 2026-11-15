@@ -1,7 +1,7 @@
 <%- include('partials/header') %>
 <section class="narrow card">
   <h1><%= welcome ? 'Welcome! Set up your profile' : 'Your profile' %></h1>
-  <p class="muted">Logged in as <strong><%= user.netid %></strong> · <%= user.netid %>@princeton.edu. Your contact info is only shared with someone after you accept their request (or they accept yours).</p>
+  <p class="muted">Logged in as <strong><%= user.email %></strong>. Your contact info is only shared with someone after you accept their request (or they accept yours).</p>
   <form method="post" action="/profile" class="stack">
     <input type="hidden" name="_csrf" value="<%= csrf %>">
     <label>Name <input name="name" value="<%= user.name || '' %>" required maxlength="80"></label>

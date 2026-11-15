@@ -1,0 +1,28 @@
+<%- include('partials/header') %>
+<section class="narrow card">
+  <h1>Reset your password</h1>
+  <% if (!emailEnabled) { %>
+    <p>Password resets by email aren't set up yet. Please contact the site admin to reset your password.</p>
+    <p class="links"><a href="/login">Back to log in</a></p>
+  <% } else if (step === 'email') { %>
+    <p class="note">Enter your <strong>@<%= domain %> school email</strong> and we'll send you a code.</p>
+    <form method="post" action="/forgot" class="stack">
+      <input type="hidden" name="_csrf" value="<%= csrf %>">
+      <label>School email <input type="email" name="email" placeholder="netid@<%= domain %>" required></label>
+      <button class="btn big">Send code</button>
+    </form>
+    <p class="links"><a href="/login">Back to log in</a></p>
+  <% } else { %>
+    <form method="post" action="/forgot/reset" class="stack">
+      <input type="hidden" name="_csrf" value="<%= csrf %>">
+      <label>Code from your email <input name="code" inputmode="numeric" autocomplete="one-time-code" maxlength="7" required class="code" placeholder="123456"></label>
+      <label>New password <input type="password" name="password" required minlength="8" autocomplete="new-password" placeholder="At least 8 characters"></label>
+      <button class="btn big">Set new password</button>
+    </form>
+    <form method="post" action="/forgot/cancel" class="links">
+      <input type="hidden" name="_csrf" value="<%= csrf %>">
+      Sent to <%= email %>. <button class="link accent">Use a different email</button>
+    </form>
+  <% } %>
+</section>
+<%- include('partials/footer') %>

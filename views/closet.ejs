@@ -3,7 +3,7 @@
   const termsText = r => r.terms === 'deposit' ? `$${r.deposit_amount} deposit`
     : r.terms === 'dryclean' ? 'Will dry clean before returning'
     : `Swap for "${r.swap_title || 'a dress'}"`;
-  const contact = (netid, phone) => `${netid}@princeton.edu${phone ? ' · ' + phone : ''}`;
+  const contact = (email, phone) => `${email}${phone ? ' · ' + phone : ''}`;
 %>
 <h1>My closet</h1>
 
@@ -17,7 +17,7 @@
         <span class="status <%= r.status %>"><%= r.status %></span>
         <p class="muted"><%= r.event_name ? r.event_name + ' · ' : '' %><%= r.pickup_date %> → <%= r.return_date %> · <strong><%= termsText(r) %></strong></p>
         <% if (r.message) { %><p class="msg">“<%= r.message %>”</p><% } %>
-        <% if (r.status === 'accepted') { %><p class="contact">Contact: <%= contact(r.borrower_netid, r.borrower_phone) %></p><% } %>
+        <% if (r.status === 'accepted') { %><p class="contact">Contact: <%= contact(r.borrower_email, r.borrower_phone) %></p><% } %>
       </div>
       <div class="actions">
         <% const act = (a, label, cls) => { %>
@@ -39,7 +39,7 @@
         <a href="/dresses/<%= r.dress_id %>"><strong><%= r.dress_title %></strong></a> from <%= r.owner_name %>
         <span class="status <%= r.status %>"><%= r.status %></span>
         <p class="muted"><%= r.pickup_date %> → <%= r.return_date %> · <%= termsText(r) %></p>
-        <% if (r.status === 'accepted') { %><p class="contact">Contact: <%= contact(r.owner_netid, r.owner_phone) %></p><% } %>
+        <% if (r.status === 'accepted') { %><p class="contact">Contact: <%= contact(r.owner_email, r.owner_phone) %></p><% } %>
       </div>
       <div class="actions">
         <% if (['pending','accepted'].includes(r.status)) { %>
