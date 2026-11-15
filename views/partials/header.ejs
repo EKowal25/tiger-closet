@@ -1,0 +1,28 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title><%= title %> · Tiger Closet</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,500;9..144,600&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="/style.css">
+</head>
+<body>
+<header class="nav">
+  <a href="/" class="brand">Tiger <em>Closet</em></a>
+  <% if (user) { %>
+    <nav>
+      <a href="/browse" class="<%= path === '/browse' ? 'on' : '' %>">Browse</a>
+      <a href="/dresses/new" class="<%= path === '/dresses/new' ? 'on' : '' %>">Post a dress</a>
+      <a href="/closet" class="<%= path === '/closet' ? 'on' : '' %>">My closet</a>
+      <a href="/profile" class="<%= path === '/profile' ? 'on' : '' %>">Profile</a>
+      <form method="post" action="/logout" class="inline">
+        <input type="hidden" name="_csrf" value="<%= csrf %>">
+        <button class="link">Log out</button>
+      </form>
+    </nav>
+  <% } %>
+</header>
+<main>
+<% if (flash) { %><div class="flash <%= flash.type %>"><%= flash.msg %></div><% } %>

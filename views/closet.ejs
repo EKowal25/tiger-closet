@@ -1,0 +1,72 @@
+<%- include('partials/header') %>
+<%
+  const termsText = r => r.terms === 'deposit' ? `$${r.deposit_amount} deposit`
+    : r.terms === 'dryclean' ? 'Will dry clean before returning'
+    : `Swap for "${r.swap_title || 'a dress'}"`;
+  const contact = (netid, phone) => `${netid}@princeton.edu${phone ? ' · ' + phone : ''}`;
+%>
+<h1>My closet</h1>
+
+<section id="received">
+  <h2>Requests for my dresses</h2>
+  <% if (!received.length) { %><p class="muted">No requests yet.</p><% } %>
+  <% received.forEach(r => { %>
+    <div class="req card">
+      <div>
+        <strong><%= r.borrower_name %></strong><%= r.borrower_year ? " '" + String(r.borrower_year).slice(-2) : '' %> wants <a href="/dresses/<%= r.dress_id %>"><%= r.dress_title %></a>
+        <span class="status <%= r.status %>"><%= r.status %></span>
+        <p class="muted"><%= r.event_name ? r.event_name + ' · ' : '' %><%= r.pickup_date %> → <%= r.return_date %> · <strong><%= termsText(r) %></strong></p>
+        <% if (r.message) { %><p class="msg">“<%= r.message %>”</p><% } %>
+        <% if (r.status === 'accepted') { %><p class="contact">Contact: <%= contact(r.borrower_netid, r.borrower_phone) %></p><% } %>
+      </div>
+      <div class="actions">
+        <% const act = (a, label, cls) => { %>
+          <form method="post" action="/requests/<%= r.id %>/<%= a %>"><input type="hidden" name="_csrf" value="<%= csrf %>"><button class="btn <%= cls %>"><%= label %></button></form>
+        <% } %>
+        <% if (r.status === 'pending') { act('accept', 'Accept', ''); act('decline', 'Decline', 'ghost'); } %>
+        <% if (r.status === 'accepted') { act('returned', 'Mark returned', 'ghost'); } %>
+      </div>
+    </div>
+  <% }) %>
+</section>
+
+<section id="sent">
+  <h2>My requests</h2>
+  <% if (!sent.length) { %><p class="muted">You haven't requested any dresses yet. <a href="/browse">Browse</a></p><% } %>
+  <% sent.forEach(r => { %>
+    <div class="req card">
+      <div>
+        <a href="/dresses/<%= r.dress_id %>"><strong><%= r.dress_title %></strong></a> from <%= r.owner_name %>
+        <span class="status <%= r.status %>"><%= r.status %></span>
+        <p class="muted"><%= r.pickup_date %> → <%= r.return_date %> · <%= termsText(r) %></p>
+        <% if (r.status === 'accepted') { %><p class="contact">Contact: <%= contact(r.owner_netid, r.owner_phone) %></p><% } %>
+      </div>
+      <div class="actions">
+        <% if (['pending','accepted'].includes(r.status)) { %>
+          <form method="post" action="/requests/<%= r.id %>/cancel"><input type="hidden" name="_csrf" value="<%= csrf %>"><button class="btn ghost">Cancel</button></form>
+        <% } %>
+      </div>
+    </div>
+  <% }) %>
+</section>
+
+<section>
+  <div class="pagehead"><h2>My listings</h2><a class="btn" href="/dresses/new">+ Post a dress</a></div>
+  <% if (!listings.length) { %><p class="muted">You haven't posted any dresses yet.</p><% } %>
+  <div class="grid">
+    <% listings.forEach(d => { %>
+      <div class="tile <%= d.active ? '' : 'hidden-listing' %>">
+        <a href="/dresses/<%= d.id %>" class="ph"><% if (d.photos[0]) { %><img src="<%= photoUrl(d.photos[0]) %>" alt=""><% } %></a>
+        <div class="meta">
+          <strong><%= d.title %></strong>
+          <span class="muted">Size <%= d.size %><%= d.active ? '' : ' · Hidden' %></span>
+          <div class="actions">
+            <form method="post" action="/dresses/<%= d.id %>/toggle"><input type="hidden" name="_csrf" value="<%= csrf %>"><button class="btn ghost sm"><%= d.active ? 'Hide' : 'Show' %></button></form>
+            <form method="post" action="/dresses/<%= d.id %>/delete" onsubmit="return confirm('Delete this listing?')"><input type="hidden" name="_csrf" value="<%= csrf %>"><button class="btn ghost sm danger">Delete</button></form>
+          </div>
+        </div>
+      </div>
+    <% }) %>
+  </div>
+</section>
+<%- include('partials/footer') %>
