@@ -211,6 +211,17 @@ app.post('/logout', checkCsrf, (req, res) => {
   res.redirect('/');
 });
 
+// ---------- health check ----------
+app.get('/healthz', async (req, res) => {
+  try {
+    await db.one('SELECT 1 FROM users LIMIT 1');
+    res.json({ ok: true, db: 'ok', photos: storage.useBlob ? 'blob' : 'local' });
+  } catch (e) {
+    console.error(e);
+    res.status(503).json({ ok: false, db: 'error' });
+  }
+});
+
 // ---------- pages ----------
 app.get('/', (req, res) => {
   if (req.user) return res.redirect('/browse');
