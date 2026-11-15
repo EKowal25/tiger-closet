@@ -1,9 +1,9 @@
 <%- include('partials/header') %>
 <div class="detail">
   <div class="gallery">
-    <img id="main" src="/uploads/<%= dress.photos[0] ? dress.photos[0].filename : '' %>" alt="<%= dress.title %>">
+    <img id="main" src="<%= dress.photos[0] ? photoUrl(dress.photos[0]) : '' %>" alt="<%= dress.title %>">
     <% if (dress.photos.length > 1) { %>
-      <div class="thumbs"><% dress.photos.forEach(p => { %><img src="/uploads/<%= p.filename %>" onclick="document.getElementById('main').src=this.src" alt=""><% }) %></div>
+      <div class="thumbs"><% dress.photos.forEach(p => { %><img src="<%= photoUrl(p) %>" onclick="document.getElementById('main').src=this.src" alt=""><% }) %></div>
     <% } %>
   </div>
   <div class="info">

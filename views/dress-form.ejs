@@ -1,7 +1,7 @@
 <%- include('partials/header') %>
 <section class="narrow card">
   <h1>Post a dress</h1>
-  <form method="post" action="/dresses" enctype="multipart/form-data" class="stack">
+  <form method="post" action="/dresses" enctype="multipart/form-data" class="stack" id="dressForm">
     <input type="hidden" name="_csrf" value="<%= csrf %>">
     <label>Photos (up to 6) <input type="file" name="photos" accept="image/jpeg,image/png,image/webp,image/heic" multiple required id="photos"></label>
     <div id="preview" class="preview"></div>
@@ -23,16 +23,53 @@
       <label class="check"><input type="checkbox" name="allow_dryclean" checked> They agree to dry clean it before returning</label>
       <label class="check"><input type="checkbox" name="allow_swap"> They swap one of their dresses with me</label>
     </fieldset>
-    <button class="btn big">Post dress</button>
+    <p class="flash err" id="formErr" hidden></p>
+    <button class="btn big" id="submitBtn">Post dress</button>
   </form>
 </section>
 <script>
+  const form = document.getElementById('dressForm');
   const input = document.getElementById('photos'), preview = document.getElementById('preview');
+  const btn = document.getElementById('submitBtn'), errBox = document.getElementById('formErr');
   input.addEventListener('change', () => {
     preview.innerHTML = '';
     [...input.files].slice(0, 6).forEach(f => { const i = new Image(); i.src = URL.createObjectURL(f); preview.appendChild(i); });
   });
   const dep = document.getElementById('allowDeposit'), wrap = document.getElementById('minDepositWrap');
   dep.addEventListener('change', () => wrap.hidden = !dep.checked);
+
+  // Shrink photos to at most 1600px (JPEG) so the upload is fast and stays under the server's size limit.
+  async function shrink(file) {
+    try {
+      const bmp = await createImageBitmap(file);
+      const scale = Math.min(1, 1600 / Math.max(bmp.width, bmp.height));
+      const c = document.createElement('canvas');
+      c.width = Math.round(bmp.width * scale); c.height = Math.round(bmp.height * scale);
+      c.getContext('2d').drawImage(bmp, 0, 0, c.width, c.height);
+      const blob = await new Promise(r => c.toBlob(r, 'image/jpeg', 0.82));
+      return blob ? new File([blob], file.name.replace(/\.\w+$/, '') + '.jpg', { type: 'image/jpeg' }) : file;
+    } catch { return file; } // e.g. HEIC on browsers that can't decode it
+  }
+
+  form.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    if (!input.files.length) return;
+    errBox.hidden = true; btn.disabled = true; btn.textContent = 'Uploading…';
+    try {
+      const data = new FormData(form);
+      data.delete('photos');
+      for (const f of [...input.files].slice(0, 6)) data.append('photos', await shrink(f));
+      let total = 0; for (const [, v] of data) total += v.size || 0;
+      if (total > 4.2 * 1024 * 1024) throw new Error('Those photos are too large together. Try fewer or smaller photos.');
+      const res = await fetch(form.action, { method: 'POST', body: data, headers: { 'X-Requested-With': 'fetch' } });
+      if (res.status === 413) throw new Error('Those photos are too large. Try fewer or smaller photos.');
+      const out = await res.json().catch(() => ({}));
+      if (out.redirect) return void (window.location.href = out.redirect);
+      throw new Error(out.error || 'Upload failed. Please try again.');
+    } catch (err) {
+      errBox.textContent = err.message || 'Upload failed. Please try again.'; errBox.hidden = false;
+      btn.disabled = false; btn.textContent = 'Post dress';
+    }
+  });
 </script>
 <%- include('partials/footer') %>

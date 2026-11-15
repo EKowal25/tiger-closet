@@ -56,7 +56,7 @@
   <div class="grid">
     <% listings.forEach(d => { %>
       <div class="tile <%= d.active ? '' : 'hidden-listing' %>">
-        <a href="/dresses/<%= d.id %>" class="ph"><% if (d.photos[0]) { %><img src="/uploads/<%= d.photos[0].filename %>" alt=""><% } %></a>
+        <a href="/dresses/<%= d.id %>" class="ph"><% if (d.photos[0]) { %><img src="<%= photoUrl(d.photos[0]) %>" alt=""><% } %></a>
         <div class="meta">
           <strong><%= d.title %></strong>
           <span class="muted">Size <%= d.size %><%= d.active ? '' : ' · Hidden' %></span>

@@ -14,24 +14,23 @@ Payment for deposits happens outside the site (Venmo, cash, etc.).
 
 ## Run locally
 
+You need Node 18+ and a Postgres database.
+
 ```bash
 npm install
-cp .env.example .env   # set DEV_LOGIN=true to log in as any NetID without CAS
+cp .env.example .env   # set DATABASE_URL; set DEV_LOGIN=true to log in as any NetID without CAS
 npm run dev
 ```
 
-Then open http://localhost:3000.
+Then open http://localhost:3000. The tables are created automatically on first run. Without a Blob token, photos are saved to `uploads/`.
 
-## Deploy
+## Deploy to Vercel
 
-You need a Node 18+ host with a persistent disk, because the SQLite database is stored in `data/` and photos in `uploads/`. Render, Railway and Fly.io all work. Set these variables:
-
-| Variable | Value |
-|---|---|
-| `NODE_ENV` | `production` |
-| `BASE_URL` | your public https URL, e.g. `https://tigercloset.onrender.com` |
-| `SESSION_SECRET` | a long random string |
-| `DB_PATH`, `UPLOAD_DIR` | paths on your persistent disk (optional) |
+- `api/index.js` serves the Express app as a Vercel function, and `vercel.json` routes every path to it. Files in `public/` are served directly.
+- **Database:** Postgres through Neon. In the Vercel project, open **Storage → Create Database → Neon** and connect it; this sets `DATABASE_URL`.
+- **Photos:** Vercel Blob with *private* access. Under **Storage → Create → Blob**, pick private access and connect it; this sets `BLOB_READ_WRITE_TOKEN`. Photos go through `/photos/...`, so only logged-in users can see them.
+- **Other variables:** set `SESSION_SECRET`. `BASE_URL` defaults to the project's production domain, so set it only if you use a custom domain.
+- The browser shrinks photos to 1600px before upload, because Vercel limits each request to 4.5 MB.
 
 ### Princeton CAS
 CAS works with no extra setup: the site redirects to `https://fed.princeton.edu/cas` and checks the ticket with `serviceValidate`. If CAS rejects your domain, ask Princeton OIT to allow it as a CAS service.
