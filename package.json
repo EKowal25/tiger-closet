@@ -1,0 +1,21 @@
+{
+  "name": "tiger-closet",
+  "version": "1.0.0",
+  "description": "Formal dress lending & swapping for Princeton students",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js",
+    "dev": "DEV_LOGIN=true node --watch server.js"
+  },
+  "dependencies": {
+    "better-sqlite3": "^13.2.0",
+    "cookie-session": "^2.1.1",
+    "dotenv": "^18.0.10",
+    "ejs": "^7.0.2",
+    "express": "^5.3.0",
+    "multer": "^2.5.0"
+  },
+  "engines": {
+    "node": ">=18"
+  }
+}

@@ -1,0 +1,38 @@
+<%- include('partials/header') %>
+<div class="pagehead">
+  <h1>Browse dresses</h1>
+  <a class="btn" href="/dresses/new">+ Post a dress</a>
+</div>
+<form class="filters" method="get">
+  <input name="q" value="<%= filters.q %>" placeholder="Search color, designer, style…">
+  <select name="size"><option value="">Any size</option><% SIZES.forEach(s => { %><option <%= filters.size === s ? 'selected' : '' %>><%= s %></option><% }) %></select>
+  <select name="length"><option value="">Any length</option><% LENGTHS.forEach(l => { %><option <%= filters.length === l ? 'selected' : '' %>><%= l %></option><% }) %></select>
+  <select name="terms">
+    <option value="">Any terms</option>
+    <option value="deposit" <%= filters.terms === 'deposit' ? 'selected' : '' %>>Deposit</option>
+    <option value="dryclean" <%= filters.terms === 'dryclean' ? 'selected' : '' %>>Dry clean</option>
+    <option value="swap" <%= filters.terms === 'swap' ? 'selected' : '' %>>Swap</option>
+  </select>
+  <button class="btn ghost">Filter</button>
+</form>
+<% if (!dresses.length) { %>
+  <div class="empty card center"><p>No dresses match yet. Be the first to post one!</p><a class="btn" href="/dresses/new">Post a dress</a></div>
+<% } else { %>
+<div class="grid">
+  <% dresses.forEach(d => { %>
+    <a class="tile" href="/dresses/<%= d.id %>">
+      <div class="ph"><% if (d.photos[0]) { %><img src="/uploads/<%= d.photos[0].filename %>" alt="<%= d.title %>" loading="lazy"><% } %></div>
+      <div class="meta">
+        <strong><%= d.title %></strong>
+        <span class="muted">Size <%= d.size %><%= d.length ? ' · ' + d.length : '' %><%= d.color ? ' · ' + d.color : '' %></span>
+        <span class="tags">
+          <% if (d.allow_deposit) { %><i>Deposit<%= d.min_deposit ? ' $' + d.min_deposit + '+' : '' %></i><% } %>
+          <% if (d.allow_dryclean) { %><i>Dry clean</i><% } %>
+          <% if (d.allow_swap) { %><i>Swap</i><% } %>
+        </span>
+      </div>
+    </a>
+  <% }) %>
+</div>
+<% } %>
+<%- include('partials/footer') %>

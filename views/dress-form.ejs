@@ -1,0 +1,38 @@
+<%- include('partials/header') %>
+<section class="narrow card">
+  <h1>Post a dress</h1>
+  <form method="post" action="/dresses" enctype="multipart/form-data" class="stack">
+    <input type="hidden" name="_csrf" value="<%= csrf %>">
+    <label>Photos (up to 6) <input type="file" name="photos" accept="image/jpeg,image/png,image/webp,image/heic" multiple required id="photos"></label>
+    <div id="preview" class="preview"></div>
+    <label>Title <input name="title" required maxlength="100" placeholder="Emerald satin slip dress"></label>
+    <div class="row">
+      <label>Size <select name="size" required><option value="">Choose…</option><% SIZES.forEach(s => { %><option><%= s %></option><% }) %></select></label>
+      <label>Length <select name="length"><option value="">—</option><% LENGTHS.forEach(l => { %><option><%= l %></option><% }) %></select></label>
+    </div>
+    <div class="row">
+      <label>Color <input name="color" maxlength="40" placeholder="Emerald"></label>
+      <label>Designer / brand <input name="designer" maxlength="60" placeholder="Reformation"></label>
+    </div>
+    <label>Description <textarea name="description" rows="4" maxlength="2000" placeholder="Fit notes, fabric, any wear, when it's available…"></textarea></label>
+
+    <fieldset>
+      <legend>How can people borrow it?</legend>
+      <label class="check"><input type="checkbox" name="allow_deposit" checked id="allowDeposit"> They put down a deposit</label>
+      <label class="indent" id="minDepositWrap">Minimum deposit ($) <input type="number" name="min_deposit" min="0" max="2000" value="50"></label>
+      <label class="check"><input type="checkbox" name="allow_dryclean" checked> They agree to dry clean it before returning</label>
+      <label class="check"><input type="checkbox" name="allow_swap"> They swap one of their dresses with me</label>
+    </fieldset>
+    <button class="btn big">Post dress</button>
+  </form>
+</section>
+<script>
+  const input = document.getElementById('photos'), preview = document.getElementById('preview');
+  input.addEventListener('change', () => {
+    preview.innerHTML = '';
+    [...input.files].slice(0, 6).forEach(f => { const i = new Image(); i.src = URL.createObjectURL(f); preview.appendChild(i); });
+  });
+  const dep = document.getElementById('allowDeposit'), wrap = document.getElementById('minDepositWrap');
+  dep.addEventListener('change', () => wrap.hidden = !dep.checked);
+</script>
+<%- include('partials/footer') %>
