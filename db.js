@@ -74,6 +74,14 @@ ALTER TABLE users ADD COLUMN IF NOT EXISTS locked_until    TIMESTAMPTZ;
 ALTER TABLE users ADD COLUMN IF NOT EXISTS session_version INTEGER NOT NULL DEFAULT 0;
 
 ALTER TABLE dresses  ADD COLUMN IF NOT EXISTS open_to_trade     BOOLEAN NOT NULL DEFAULT false;
+-- Borrowers can offer several terms at once (deposit and/or dry clean and/or swap).
+ALTER TABLE requests ADD COLUMN IF NOT EXISTS offer_deposit  BOOLEAN NOT NULL DEFAULT false;
+ALTER TABLE requests ADD COLUMN IF NOT EXISTS offer_dryclean BOOLEAN NOT NULL DEFAULT false;
+ALTER TABLE requests ADD COLUMN IF NOT EXISTS offer_swap     BOOLEAN NOT NULL DEFAULT false;
+ALTER TABLE requests ALTER COLUMN terms DROP NOT NULL;
+ALTER TABLE requests DROP CONSTRAINT IF EXISTS requests_terms_check;
+UPDATE requests SET offer_deposit = (terms = 'deposit'), offer_dryclean = (terms = 'dryclean'), offer_swap = (terms = 'swap'), terms = NULL
+  WHERE terms IS NOT NULL;
 ALTER TABLE requests ADD COLUMN IF NOT EXISTS owner_got_back    BOOLEAN NOT NULL DEFAULT false;
 ALTER TABLE requests ADD COLUMN IF NOT EXISTS borrower_got_back BOOLEAN NOT NULL DEFAULT false;
 

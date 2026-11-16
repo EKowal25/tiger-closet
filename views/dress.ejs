@@ -18,7 +18,7 @@
       <% if (dress.open_to_trade) { %><i class="trade">Up for trade</i><% } %>
     </div>
 
-    <% const canBorrow = dress.allow_deposit || dress.allow_dryclean || dress.allow_swap; %>
+    <% const canBorrow = dress.allow_deposit || dress.allow_dryclean || dress.allow_swap; /* lend-listed; trade-only dresses skip the borrow form */ %>
     <% if (isOwner) { %>
       <div class="card soft">
         <p>This is your listing<%= dress.active ? '' : ' (hidden)' %>. Requests show up in <a href="/closet#received">My closet</a>.</p>
@@ -70,42 +70,41 @@
             <label>Return by <input type="date" name="return_date" required></label>
           </div>
           <fieldset>
-            <legend>Your terms</legend>
-            <% if (dress.allow_deposit) { %>
-              <label class="check"><input type="radio" name="terms" value="deposit" required> Put down a deposit</label>
-              <label class="indent" data-for="deposit">Deposit amount ($)
-                <input type="number" name="deposit_amount" min="<%= dress.min_deposit %>" max="5000" value="<%= dress.min_deposit || '' %>">
-                <small class="muted">Returned to you when the dress comes back in the same condition. Arrange payment (e.g. Venmo) directly.</small>
-              </label>
-            <% } %>
-            <% if (dress.allow_dryclean) { %>
-              <label class="check"><input type="radio" name="terms" value="dryclean" required> Agree to dry clean it</label>
-              <label class="check indent" data-for="dryclean"><input type="checkbox" name="dryclean_agree"> I agree to have this dress professionally dry cleaned at my expense before returning it.</label>
-            <% } %>
-            <% if (dress.allow_swap) { %>
-              <label class="check"><input type="radio" name="terms" value="swap" required <%= offer === 'swap' ? 'checked' : '' %>> Offer a swap: lend them one of my dresses for the same dates</label>
-              <label class="indent" data-for="swap">
-                <% if (myDresses.length) { %>
-                  <select name="swap_dress_id"><% myDresses.forEach(m => { %><option value="<%= m.id %>"><%= m.title %></option><% }) %></select>
-                  <small class="muted">You each give the other's dress back afterward.</small>
-                <% } else { %>
-                  <small class="muted">You need to <a href="/dresses/new">post a dress</a> first to offer a swap.</small>
-                <% } %>
-              </label>
-            <% } %>
+            <legend>Your terms <small class="muted">(pick one or more)</small></legend>
+            <% const unlisted = '<small class="muted"> · owner didn\u2019t list this, but can still accept</small>'; %>
+            <label class="check"><input type="checkbox" name="offer_deposit"> <span>Put down a deposit<%- dress.allow_deposit ? '' : unlisted %></span></label>
+            <label class="indent" data-for="offer_deposit">Deposit amount ($)
+              <input type="number" name="deposit_amount" min="<%= dress.min_deposit %>" max="5000" value="<%= dress.min_deposit || '' %>">
+              <small class="muted">Returned to you when the dress comes back in the same condition. Arrange payment (e.g. Venmo) directly.</small>
+            </label>
+            <label class="check"><input type="checkbox" name="offer_dryclean"> <span>Agree to dry clean it<%- dress.allow_dryclean ? '' : unlisted %></span></label>
+            <label class="check indent" data-for="offer_dryclean"><input type="checkbox" name="dryclean_agree"> I agree to have this dress professionally dry cleaned at my expense before returning it.</label>
+            <label class="check"><input type="checkbox" name="offer_swap" <%= offer === 'swap' ? 'checked' : '' %>> <span>Swap: lend them one of my dresses for the same dates<%- dress.allow_swap ? '' : unlisted %></span></label>
+            <label class="indent" data-for="offer_swap">
+              <% if (myDresses.length) { %>
+                <select name="swap_dress_id"><% myDresses.forEach(m => { %><option value="<%= m.id %>"><%= m.title %></option><% }) %></select>
+                <small class="muted">You each give the other's dress back afterward.</small>
+              <% } else { %>
+                <small class="muted">You need to <a href="/dresses/new">post a dress</a> first to offer a swap.</small>
+              <% } %>
+            </label>
           </fieldset>
           <label>Message <textarea name="message" rows="3" maxlength="1000" placeholder="Hi! I'd love to borrow this for…"></textarea></label>
           <button class="btn big" id="borrowBtn">Send request</button>
         </form>
         <script>
           const f = document.getElementById('reqForm');
+          const on = (n) => f.querySelector(`input[name=${n}]`).checked;
           const sync = () => {
-            const v = (f.querySelector('input[name=terms]:checked') || {}).value;
-            f.querySelectorAll('[data-for]').forEach(el => el.hidden = el.dataset.for !== v);
-            document.getElementById('borrowTitle').textContent = v === 'swap' ? 'Offer a swap' : 'Borrow it';
-            document.getElementById('borrowBtn').textContent = v === 'swap' ? 'Send swap offer' : 'Send request';
+            f.querySelectorAll('[data-for]').forEach(el => el.hidden = !on(el.dataset.for));
+            const swapOnly = on('offer_swap') && !on('offer_deposit') && !on('offer_dryclean');
+            document.getElementById('borrowTitle').textContent = swapOnly ? 'Offer a swap' : 'Borrow it';
+            document.getElementById('borrowBtn').textContent = swapOnly ? 'Send swap offer' : 'Send request';
           };
           f.addEventListener('change', sync); sync();
+          f.addEventListener('submit', (e) => {
+            if (!on('offer_deposit') && !on('offer_dryclean') && !on('offer_swap')) { e.preventDefault(); alert('Pick at least one of your terms.'); }
+          });
           if (location.search.includes('offer=swap')) f.scrollIntoView({ behavior: 'smooth' });
         </script>
       <% } %>

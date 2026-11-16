@@ -1,8 +1,10 @@
 <%- include('partials/header') %>
 <%
-  const termsText = r => r.terms === 'deposit' ? `$${r.deposit_amount} deposit`
-    : r.terms === 'dryclean' ? 'Will dry clean before returning'
-    : `Swap for "${r.swap_title || 'a dress'}"`;
+  const termsText = r => [
+    r.offer_deposit ? `$${r.deposit_amount} deposit` : null,
+    r.offer_dryclean ? 'will dry clean before returning' : null,
+    r.offer_swap ? `swap for "${r.swap_title || 'a dress'}"` : null,
+  ].filter(Boolean).join(' + ').replace(/^./, c => c.toUpperCase());
   const contact = (email, phone) => `${email}${phone ? ' · ' + phone : ''}`;
 %>
 <h1>My closet</h1>
@@ -24,8 +26,8 @@
           <form method="post" action="/requests/<%= r.id %>/<%= a %>"><input type="hidden" name="_csrf" value="<%= csrf %>"><button class="btn <%= cls %>"><%= label %></button></form>
         <% } %>
         <% if (r.status === 'pending') { act('accept', 'Accept', ''); act('decline', 'Decline', 'ghost'); } %>
-        <% if (r.status === 'accepted' && r.terms !== 'swap') { act('returned', 'Mark returned', 'ghost'); } %>
-        <% if (r.status === 'accepted' && r.terms === 'swap') { if (r.owner_got_back) { %><span class="confirmed">✓ You got yours back<%= r.borrower_got_back ? '' : ' · waiting on them' %></span><% } else { act('gotback', 'I got my dress back', 'ghost'); } } %>
+        <% if (r.status === 'accepted' && !r.offer_swap) { act('returned', 'Mark returned', 'ghost'); } %>
+        <% if (r.status === 'accepted' && r.offer_swap) { if (r.owner_got_back) { %><span class="confirmed">✓ You got yours back<%= r.borrower_got_back ? '' : ' · waiting on them' %></span><% } else { act('gotback', 'I got my dress back', 'ghost'); } } %>
       </div>
     </div>
   <% }) %>
@@ -43,7 +45,7 @@
         <% if (r.status === 'accepted') { %><p class="contact">Contact: <%= contact(r.owner_email, r.owner_phone) %></p><% } %>
       </div>
       <div class="actions">
-        <% if (r.status === 'accepted' && r.terms === 'swap') { %>
+        <% if (r.status === 'accepted' && r.offer_swap) { %>
           <% if (r.borrower_got_back) { %><span class="confirmed">✓ You got yours back<%= r.owner_got_back ? '' : ' · waiting on them' %></span>
           <% } else { %><form method="post" action="/requests/<%= r.id %>/gotback"><input type="hidden" name="_csrf" value="<%= csrf %>"><button class="btn ghost">I got my dress back</button></form><% } %>
         <% } %>
