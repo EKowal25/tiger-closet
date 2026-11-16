@@ -10,6 +10,7 @@ const mail = require('./mail');
 const mountAuth = require('./auth');
 const makeNotify = require('./notify');
 const pricing = require('./public/pricing');
+const reviews = require('./reviews');
 
 const PORT = process.env.PORT || 3000;
 const BASE_URL = (process.env.BASE_URL
@@ -57,6 +58,8 @@ app.use(async (req, res, next) => {
   res.locals.photoUrl = (p) => `/photos/${p.key}`;
   res.locals.CONDITIONS = pricing.CONDITIONS;
   res.locals.EVENTS = EVENTS;
+  res.locals.isAdmin = reviews.isAdmin(req.user);
+  res.locals.stars = (n) => '★'.repeat(Math.round(n)) + '☆'.repeat(5 - Math.round(n));
   next();
 });
 
@@ -282,6 +285,7 @@ app.get('/dresses/:id', requireAuth, async (req, res) => {
   const myRequest = await db.one(`SELECT * FROM requests WHERE dress_id = $1 AND borrower_id = $2 AND status IN ('pending','countered','accepted') ORDER BY id DESC LIMIT 1`, [dress.id, req.user.id]);
   const myTrade = await db.one(`SELECT * FROM trades WHERE dress_id = $1 AND offerer_id = $2 AND status IN ('pending','countered','accepted') ORDER BY id DESC LIMIT 1`, [dress.id, req.user.id]);
   const tradeOffers = isOwner ? (await db.one(`SELECT count(*)::int AS n FROM trades WHERE dress_id = $1 AND status = 'pending'`, [dress.id])).n : 0;
+  res.locals.ownerRating = await reviews.ratingFor(dress.owner_id);
   res.render('dress', { title: dress.title, dress, isOwner, myDresses, myRequest, myTrade, tradeOffers, offer: req.query.offer || '' });
 });
 
@@ -640,7 +644,7 @@ app.get('/swaps', requireAuth, async (req, res) => {
 app.get('/closet', requireAuth, async (req, res) => {
   const listings = await attachPhotos(await db.all('SELECT * FROM dresses WHERE owner_id = $1 ORDER BY created_at DESC', [req.user.id]));
   const base = `
-    SELECT r.*, d.title AS dress_title, sd.title AS swap_title,
+    SELECT r.*, d.title AS dress_title, d.owner_id AS owner_id, sd.title AS swap_title,
            o.name AS owner_name, o.email AS owner_email, o.phone AS owner_phone,
            b.name AS borrower_name, b.email AS borrower_email, b.phone AS borrower_phone,
            b.class_year AS borrower_year, b.college AS borrower_college
@@ -669,12 +673,16 @@ app.get('/closet', requireAuth, async (req, res) => {
   const counterIds = [...new Set(trades.flatMap((t) => (t.counter && t.counter.dress_ids) || []))];
   const counterDresses = counterIds.length ? await db.all('SELECT id, title FROM dresses WHERE id = ANY($1)', [counterIds]) : [];
   for (const t of trades) t.counterItems = ((t.counter && t.counter.dress_ids) || []).map((id) => counterDresses.find((d) => d.id === id) || { id, title: '(no longer listed)' });
+  const mine = await db.all('SELECT request_id, trade_id FROM reviews WHERE reviewer_id = $1', [req.user.id]);
+  const reviewed = { request: mine.map((m) => m.request_id).filter(Boolean), trade: mine.map((m) => m.trade_id).filter(Boolean) };
   res.render('closet', {
-    title: 'My closet', listings, received, sent,
+    title: 'My closet', listings, received, sent, reviewed,
     tradesReceived: trades.filter((t) => t.owner_id === req.user.id),
     tradesSent: trades.filter((t) => t.offerer_id === req.user.id),
   });
 });
+
+reviews.mount(app, { requireAuth, checkCsrf, flash, clean, toInt, notify, attachPhotos, BASE_URL });
 
 // ---------- errors ----------
 app.use((req, res) => res.status(404).render('error', { title: 'Not found', message: 'That page does not exist.' }));

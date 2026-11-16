@@ -123,6 +123,36 @@ CREATE TABLE IF NOT EXISTS trade_items (
   PRIMARY KEY (trade_id, dress_id)
 );
 
+-- Reviews: each person in a borrow/swap/trade can rate the other once.
+CREATE TABLE IF NOT EXISTS reviews (
+  id           SERIAL PRIMARY KEY,
+  request_id   INTEGER REFERENCES requests(id) ON DELETE SET NULL,
+  trade_id     INTEGER REFERENCES trades(id) ON DELETE SET NULL,
+  reviewer_id  INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  reviewee_id  INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  rating       INTEGER NOT NULL CHECK (rating BETWEEN 1 AND 5),
+  comment      TEXT,
+  role         TEXT,
+  created_at   TIMESTAMPTZ NOT NULL DEFAULT now(),
+  UNIQUE (request_id, reviewer_id),
+  UNIQUE (trade_id, reviewer_id)
+);
+CREATE INDEX IF NOT EXISTS idx_reviews_reviewee ON reviews(reviewee_id);
+
+-- Private problem reports, seen only by admins.
+CREATE TABLE IF NOT EXISTS reports (
+  id           SERIAL PRIMARY KEY,
+  request_id   INTEGER REFERENCES requests(id) ON DELETE SET NULL,
+  trade_id     INTEGER REFERENCES trades(id) ON DELETE SET NULL,
+  reporter_id  INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  reported_id  INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  reason       TEXT NOT NULL,
+  details      TEXT,
+  status       TEXT NOT NULL DEFAULT 'open',
+  created_at   TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS idx_reports_reported ON reports(reported_id);
+
 -- Counter offers: the owner proposes different terms (requests) or different dresses (trades).
 ALTER TABLE requests ADD COLUMN IF NOT EXISTS counter JSONB;
 ALTER TABLE trades   ADD COLUMN IF NOT EXISTS counter JSONB;

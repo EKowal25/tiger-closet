@@ -21,6 +21,7 @@
       <small class="muted">Uncheck to stop emails. You can change this anytime here.</small>
     </fieldset>
     <button class="btn">Save</button>
+    <p class="links"><a href="/users/<%= user.id %>">See my public profile and reviews</a><% if (isAdmin) { %> · <a href="/admin/reports">Reports (admin)</a><% } %></p>
   </form>
 </section>
 <%- include('partials/footer') %>

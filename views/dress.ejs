@@ -16,7 +16,7 @@
       <p class="valueline"><span>Condition: <strong><%= CONDITIONS[dress.condition].label %></strong></span>
         <% if (dress.retail_price) { %><span><%= dress.retail_estimated ? 'Est. retail' : 'Retail' %>: <strong>$<%= dress.retail_price %></strong></span><% } %></p>
     <% } %>
-    <p class="owner">Posted by <strong><%= dress.owner_name %></strong><%= dress.owner_year ? " '" + String(dress.owner_year).slice(-2) : '' %><%= dress.owner_college ? ' · ' + dress.owner_college : '' %></p>
+    <p class="owner">Posted by <a href="/users/<%= dress.owner_id %>"><strong><%= dress.owner_name %></strong></a><% if (ownerRating.n) { %> <span class="rating" title="<%= ownerRating.avg %> out of 5"><%= stars(ownerRating.avg) %> <%= ownerRating.avg %> (<%= ownerRating.n %>)</span><% } %><%= dress.owner_year ? " '" + String(dress.owner_year).slice(-2) : '' %><%= dress.owner_college ? ' · ' + dress.owner_college : '' %></p>
     <% if (dress.description) { %><p class="desc"><%= dress.description %></p><% } %>
     <div class="tags">
       <% if (dress.allow_deposit) { %><i>Deposit<%= dress.min_deposit ? ' (min $' + dress.min_deposit + ')' : '' %></i><% } %>

@@ -1,0 +1,30 @@
+<%- include('partials/header') %>
+<%
+  const prompt = deal.deal === 'trade'
+    ? 'How was the trade? Was their dress as described, and were they easy to meet up with?'
+    : deal.iAmOwner
+      ? 'How were they as a borrower? Did the dress come back on time and in good condition?'
+      : 'How were they as a lender? Was the dress as described and in the condition listed?';
+  const current = existing ? existing.rating : 0;
+%>
+<section class="narrow card">
+  <h1><%= existing ? 'Edit your review' : 'Leave a review' %></h1>
+  <p>You're reviewing <a href="/users/<%= other.id %>"><strong><%= other.name %></strong></a> for <strong><%= deal.title %></strong>.</p>
+  <p class="note"><%= prompt %></p>
+  <form method="post" action="/review/<%= deal.kind %>/<%= deal.id %>" class="stack">
+    <input type="hidden" name="_csrf" value="<%= csrf %>">
+    <div>
+      <div class="starpick" role="radiogroup" aria-label="Rating">
+        <% [5, 4, 3, 2, 1].forEach(n => { %>
+          <input type="radio" name="rating" id="star<%= n %>" value="<%= n %>" <%= current === n ? 'checked' : '' %> required>
+          <label for="star<%= n %>" title="<%= n %> star<%= n === 1 ? '' : 's' %>">★</label>
+        <% }) %>
+      </div>
+    </div>
+    <label>Comment (optional) <textarea name="comment" rows="3" maxlength="1000" placeholder="Anything other students should know?"><%= existing ? existing.comment : '' %></textarea></label>
+    <small class="muted">Reviews are public on their profile, with your name. For serious problems (like a dress that wasn't returned), <a href="/report/<%= deal.kind %>/<%= deal.id %>">report it privately</a> to the Tiger Closet team as well.</small>
+    <button class="btn big"><%= existing ? 'Update review' : 'Post review' %></button>
+    <a class="links" href="/closet">Cancel</a>
+  </form>
+</section>
+<%- include('partials/footer') %>

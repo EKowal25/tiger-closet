@@ -1,0 +1,35 @@
+<%- include('partials/header') %>
+<section class="card" style="max-width: 760px; margin: 24px auto;">
+  <h1><%= person.name || 'Tiger Closet member' %></h1>
+  <p class="muted"><%= person.class_year ? "Class of " + person.class_year : '' %><%= person.class_year && person.college ? ' · ' : '' %><%= person.college || '' %></p>
+  <% if (rating.n) { %>
+    <p><span class="bigstars"><%= stars(rating.avg) %></span> <strong><%= rating.avg %></strong> out of 5 · <%= rating.n %> review<%= rating.n === 1 ? '' : 's' %></p>
+  <% } else { %>
+    <p class="muted">No reviews yet.</p>
+  <% } %>
+  <% if (isMe) { %><p class="muted">This is how other students see you. <a href="/profile">Edit profile</a></p><% } %>
+
+  <h2>Reviews</h2>
+  <% if (!reviews.length) { %><p class="muted">Reviews appear here after a borrow, swap or trade.</p><% } %>
+  <% const roleText = { lender: 'as a lender', borrower: 'as a borrower', trader: 'in a trade' }; %>
+  <% reviews.forEach(v => { %>
+    <div class="review">
+      <span class="rating"><%= stars(v.rating) %></span> <strong><%= v.reviewer_name %></strong>
+      <span class="muted">· rated them <%= roleText[v.role] || '' %> · <%= new Date(v.created_at).toLocaleDateString('en-US', { month: 'short', year: 'numeric' }) %></span>
+      <% if (v.comment) { %><p><%= v.comment %></p><% } %>
+    </div>
+  <% }) %>
+</section>
+
+<% if (listings.length) { %>
+  <h2><%= isMe ? 'My' : (person.name || 'Their').split(' ')[0] + "'s" %> dresses</h2>
+  <div class="grid">
+    <% listings.forEach(d => { %>
+      <a class="tile" href="/dresses/<%= d.id %>">
+        <div class="ph"><% if (d.photos[0]) { %><img src="<%= photoUrl(d.photos[0]) %>" alt="<%= d.title %>" loading="lazy"><% } %></div>
+        <div class="meta"><strong><%= d.title %></strong><span class="muted">Size <%= d.size %><%= d.length ? ' · ' + d.length : '' %></span></div>
+      </a>
+    <% }) %>
+  </div>
+<% } %>
+<%- include('partials/footer') %>
