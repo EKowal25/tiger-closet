@@ -10,6 +10,11 @@
     </label>
     <label>Password <input type="password" name="password" required minlength="8" autocomplete="new-password" placeholder="At least 8 characters"></label>
     <label>Confirm password <input type="password" name="confirm" required minlength="8" autocomplete="new-password"></label>
+    <fieldset>
+      <legend>Email notifications</legend>
+      <label class="check"><input type="checkbox" name="notify_email" <%= notify ? 'checked' : '' %>> <span>Yes, email me when someone requests my dresses, makes a trade offer, or answers my requests.</span></label>
+      <small class="muted">This is optional. Uncheck it to opt out. You can turn emails on or off anytime in your Profile settings.</small>
+    </fieldset>
     <button class="btn big">Create account</button>
   </form>
   <p class="links">Already have an account? <a href="/login?next=<%= encodeURIComponent(next) %>">Log in</a></p>
