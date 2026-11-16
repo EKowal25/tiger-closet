@@ -84,6 +84,11 @@ UPDATE requests SET offer_deposit = (terms = 'deposit'), offer_dryclean = (terms
   WHERE terms IS NOT NULL;
 ALTER TABLE users    ADD COLUMN IF NOT EXISTS notify_email BOOLEAN NOT NULL DEFAULT true;
 
+-- Condition and (estimated or owner-entered) retail price, used to suggest deposits and rental prices.
+ALTER TABLE dresses  ADD COLUMN IF NOT EXISTS condition        TEXT;
+ALTER TABLE dresses  ADD COLUMN IF NOT EXISTS retail_price     INTEGER;
+ALTER TABLE dresses  ADD COLUMN IF NOT EXISTS retail_estimated BOOLEAN NOT NULL DEFAULT true;
+
 -- Free loans (e.g. between friends) and non-refundable rental fees.
 ALTER TABLE dresses  ADD COLUMN IF NOT EXISTS allow_free  BOOLEAN NOT NULL DEFAULT false;
 ALTER TABLE dresses  ADD COLUMN IF NOT EXISTS allow_fee   BOOLEAN NOT NULL DEFAULT false;
