@@ -151,8 +151,11 @@ app.get('/profile', requireAuth, (req, res) => {
 app.post('/profile', requireAuth, checkCsrf, async (req, res) => {
   const name = clean(req.body.name, 80);
   if (!name) { flash(req, 'Please add your name.', 'err'); return res.redirect('/profile'); }
-  await db.all('UPDATE users SET name = $1, class_year = $2, college = $3, phone = $4, notify_email = $5 WHERE id = $6',
-    [name, clean(req.body.class_year, 4), clean(req.body.college, 40), clean(req.body.phone, 30), !!req.body.notify_email, req.user.id]);
+  // Venmo username: optional, stored without the leading @.
+  const venmo = clean(req.body.venmo, 40).replace(/^@+/, '');
+  if (venmo && !/^[A-Za-z0-9_-]{3,30}$/.test(venmo)) { flash(req, 'That Venmo username doesn\u2019t look right. Use just your username, like @ava-smith.', 'err'); return res.redirect('/profile'); }
+  await db.all('UPDATE users SET name = $1, class_year = $2, college = $3, phone = $4, notify_email = $5, venmo = $7 WHERE id = $6',
+    [name, clean(req.body.class_year, 4), clean(req.body.college, 40), clean(req.body.phone, 30), !!req.body.notify_email, req.user.id, venmo || null]);
   flash(req, 'Profile saved.');
   res.redirect('/browse');
 });
@@ -645,8 +648,8 @@ app.get('/closet', requireAuth, async (req, res) => {
   const listings = await attachPhotos(await db.all('SELECT * FROM dresses WHERE owner_id = $1 ORDER BY created_at DESC', [req.user.id]));
   const base = `
     SELECT r.*, d.title AS dress_title, d.owner_id AS owner_id, sd.title AS swap_title,
-           o.name AS owner_name, o.email AS owner_email, o.phone AS owner_phone,
-           b.name AS borrower_name, b.email AS borrower_email, b.phone AS borrower_phone,
+           o.name AS owner_name, o.email AS owner_email, o.phone AS owner_phone, o.venmo AS owner_venmo,
+           b.name AS borrower_name, b.email AS borrower_email, b.phone AS borrower_phone, b.venmo AS borrower_venmo,
            b.class_year AS borrower_year, b.college AS borrower_college
     FROM requests r
     JOIN dresses d ON d.id = r.dress_id
@@ -658,8 +661,8 @@ app.get('/closet', requireAuth, async (req, res) => {
 
   const trades = await db.all(`
     SELECT t.*, d.title AS dress_title,
-           o.name AS owner_name, o.email AS owner_email, o.phone AS owner_phone,
-           f.name AS offerer_name, f.email AS offerer_email, f.phone AS offerer_phone, f.class_year AS offerer_year
+           o.name AS owner_name, o.email AS owner_email, o.phone AS owner_phone, o.venmo AS owner_venmo,
+           f.name AS offerer_name, f.email AS offerer_email, f.phone AS offerer_phone, f.venmo AS offerer_venmo, f.class_year AS offerer_year
     FROM trades t
     JOIN dresses d ON d.id = t.dress_id
     JOIN users o ON o.id = t.owner_id

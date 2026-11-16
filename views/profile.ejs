@@ -14,7 +14,9 @@
         </select>
       </label>
     </div>
-    <label>Phone (optional) <input name="phone" value="<%= user.phone || '' %>" maxlength="30" placeholder="For texting about pickup"></label>
+    <label>Phone (optional) <input name="phone" value="<%= user.phone || '' %>" maxlength="30" placeholder="For texting about pickup, or Zelle"></label>
+    <label>Venmo username (optional) <input name="venmo" value="<%= user.venmo ? '@' + user.venmo : '' %>" maxlength="40" placeholder="@your-venmo" autocapitalize="none" autocomplete="off">
+      <small class="muted">For deposits and rental fees. Only shown to the other person after a request or trade is accepted.</small></label>
     <fieldset>
       <legend>Email notifications</legend>
       <label class="check"><input type="checkbox" name="notify_email" <%= user.notify_email === false ? '' : 'checked' %>> <span>Email me at <%= user.email %> when someone requests my dresses, makes a trade offer, or answers my requests.</span></label>

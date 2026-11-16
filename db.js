@@ -83,6 +83,7 @@ ALTER TABLE requests DROP CONSTRAINT IF EXISTS requests_terms_check;
 UPDATE requests SET offer_deposit = (terms = 'deposit'), offer_dryclean = (terms = 'dryclean'), offer_swap = (terms = 'swap'), terms = NULL
   WHERE terms IS NOT NULL;
 ALTER TABLE users    ADD COLUMN IF NOT EXISTS notify_email BOOLEAN NOT NULL DEFAULT true;
+ALTER TABLE users    ADD COLUMN IF NOT EXISTS venmo TEXT;
 
 -- Condition and (estimated or owner-entered) retail price, used to suggest deposits and rental prices.
 ALTER TABLE dresses  ADD COLUMN IF NOT EXISTS condition        TEXT;

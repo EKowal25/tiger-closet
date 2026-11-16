@@ -7,7 +7,7 @@
     r.offer_dryclean ? 'will dry clean before returning' : null,
     r.offer_swap ? `swap for "${r.swap_title || 'a dress'}"` : null,
   ].filter(Boolean).join(' + ').replace(/^./, c => c.toUpperCase());
-  const contact = (email, phone) => `${email}${phone ? ' · ' + phone : ''}`;
+  const contact = (email, phone, venmo) => `${email}${phone ? ' · ' + phone : ''}${venmo ? ' · Venmo @' + venmo : ''}`;
   const payText = (r) => [r.offer_fee ? 'the $' + r.fee_amount + ' rental fee' : null, r.offer_deposit ? 'the $' + r.deposit_amount + ' deposit' : null].filter(Boolean).join(' and ');
   const statusLabel = (s) => ({ countered: 'counter offer', completed: 'traded' })[s] || s;
 %>
@@ -34,7 +34,7 @@
             <% if (r.counter.message) { %><p class="msg">“<%= r.counter.message %>”</p><% } %>
             <p class="muted">Waiting for <%= r.borrower_name %> to accept or decline.</p></div>
         <% } %>
-        <% if (r.status === 'accepted') { %><p class="contact">Contact: <%= contact(r.borrower_email, r.borrower_phone) %></p><% if (r.offer_deposit || r.offer_fee) { %><p class="paynote">💸 Collect <%= payText(r) %> by Zelle or Venmo before handing over the dress.<%= r.offer_deposit ? ' Send the deposit back when the dress is returned in the same condition.' : '' %></p><% } } %>
+        <% if (r.status === 'accepted') { %><p class="contact">Contact: <%= contact(r.borrower_email, r.borrower_phone, r.borrower_venmo) %></p><% if (r.offer_deposit || r.offer_fee) { %><p class="paynote">💸 Collect <%= payText(r) %> by Zelle or Venmo before handing over the dress.<%= r.offer_deposit ? ' Send the deposit back when the dress is returned in the same condition.' : '' %></p><% } } %>
       </div>
       <div class="actions">
         <% const act = (a, label, cls) => { %>
@@ -63,7 +63,7 @@
           <div class="counter-box"><strong><%= r.owner_name %>'s counter offer:</strong> <%= r.counter.pickup_date %> → <%= r.counter.return_date %> · <%= termsText(r.counter) %>
             <% if (r.counter.message) { %><p class="msg">“<%= r.counter.message %>”</p><% } %></div>
         <% } %>
-        <% if (r.status === 'accepted') { %><p class="contact">Contact: <%= contact(r.owner_email, r.owner_phone) %></p><% if (r.offer_deposit || r.offer_fee) { %><p class="paynote">💸 Send <%= payText(r) %> to <%= r.owner_name %> by Zelle or Venmo to confirm.<%= r.offer_deposit ? ' The deposit comes back to you when you return the dress in the same condition.' : '' %></p><% } } %>
+        <% if (r.status === 'accepted') { %><p class="contact">Contact: <%= contact(r.owner_email, r.owner_phone, r.owner_venmo) %></p><% if (r.offer_deposit || r.offer_fee) { %><p class="paynote">💸 Send <%= payText(r) %> to <%= r.owner_name %> by Zelle or Venmo<%= r.owner_venmo ? ' (@' + r.owner_venmo + ')' : '' %> to confirm.<%= r.offer_deposit ? ' The deposit comes back to you when you return the dress in the same condition.' : '' %></p><% } } %>
       </div>
       <div class="actions">
         <% if (r.status === 'accepted' && r.offer_swap) { %>
@@ -112,7 +112,7 @@
             <% if (t.counter.message) { %><p class="msg">“<%= t.counter.message %>”</p><% } %>
             <p class="muted">Waiting for <%= t.offerer_name %> to accept or decline.</p></div>
         <% } %>
-        <% if (t.status === 'accepted') { %><p class="contact">Contact: <%= contact(t.offerer_email, t.offerer_phone) %></p><p class="muted">Meet up to exchange dresses, then both tap “We’ve swapped”. The dresses then move to each other’s closets.</p><% } %>
+        <% if (t.status === 'accepted') { %><p class="contact">Contact: <%= contact(t.offerer_email, t.offerer_phone, t.offerer_venmo) %></p><p class="muted">Meet up to exchange dresses, then both tap “We’ve swapped”. The dresses then move to each other’s closets.</p><% } %>
       </div>
       <div class="actions">
         <% if (t.status === 'pending') { tradeAct(t, 'accept', 'Accept trade', ''); %><a class="btn ghost" href="/trades/<%= t.id %>/counter">Counter</a><% tradeAct(t, 'decline', 'Decline', 'ghost'); } %>
@@ -138,7 +138,7 @@
             <ul class="items"><% t.counterItems.forEach(i => { %><li><a href="/dresses/<%= i.id %>"><%= i.title %></a></li><% }) %></ul>
             <% if (t.counter.message) { %><p class="msg">“<%= t.counter.message %>”</p><% } %></div>
         <% } %>
-        <% if (t.status === 'accepted') { %><p class="contact">Contact: <%= contact(t.owner_email, t.owner_phone) %></p><p class="muted">Meet up to exchange dresses, then both tap “We’ve swapped”.</p><% } %>
+        <% if (t.status === 'accepted') { %><p class="contact">Contact: <%= contact(t.owner_email, t.owner_phone, t.owner_venmo) %></p><p class="muted">Meet up to exchange dresses, then both tap “We’ve swapped”.</p><% } %>
       </div>
       <div class="actions">
         <% if (t.status === 'accepted') { confirmBox(t, t.offerer_confirmed, t.owner_confirmed); } %>
