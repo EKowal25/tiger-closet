@@ -68,14 +68,15 @@ module.exports = function mountAuth(app, { checkCsrf, flash, safeNext, clean, BA
   // ----- sign up -----
   app.get('/signup', (req, res) => {
     if (req.user) return res.redirect('/browse');
-    render(res, 'signup', 'Create an account', { next: safeNext(req.query.next), email: '' });
+    render(res, 'signup', 'Create an account', { next: safeNext(req.query.next), email: '', notify: true });
   });
 
   app.post('/signup', checkCsrf, async (req, res) => {
     const email = normEmail(req.body.email);
     const pw = typeof req.body.password === 'string' ? req.body.password : '';
     const next = safeNext(req.body.next);
-    const again = (msg) => { res.locals.flash = { msg, type: 'err' }; render(res.status(400), 'signup', 'Create an account', { next, email }); };
+    const notify = !!req.body.notify_email;
+    const again = (msg) => { res.locals.flash = { msg, type: 'err' }; render(res.status(400), 'signup', 'Create an account', { next, email, notify }); };
     if (!emailRe.test(email)) return again(`Please use your @${ALLOWED_DOMAIN} school email.`);
     if (pw.length < 8 || pw.length > 200) return again('Your password needs at least 8 characters.');
     if (pw !== req.body.confirm) return again("Those passwords don't match.");
@@ -84,10 +85,10 @@ module.exports = function mountAuth(app, { checkCsrf, flash, safeNext, clean, BA
     if (existing) return again('There is already an account with that email. Try logging in instead.');
     const netid = email.split('@')[0];
     const user = await db.one(
-      `INSERT INTO users (netid, email, password_hash) VALUES ($1, $2, $3)
-       ON CONFLICT (netid) DO UPDATE SET email = EXCLUDED.email, password_hash = EXCLUDED.password_hash
+      `INSERT INTO users (netid, email, password_hash, notify_email) VALUES ($1, $2, $3, $4)
+       ON CONFLICT (netid) DO UPDATE SET email = EXCLUDED.email, password_hash = EXCLUDED.password_hash, notify_email = EXCLUDED.notify_email
          WHERE users.password_hash IS NULL
-       RETURNING *`, [netid, email, await hashPassword(pw)]);
+       RETURNING *`, [netid, email, await hashPassword(pw), notify]);
     if (!user) return again('There is already an account with that email. Try logging in instead.');
     startSession(req, user);
     if (mail.verifyRequired) {
