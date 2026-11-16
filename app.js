@@ -157,26 +157,68 @@ app.get('/browse', requireAuth, async (req, res) => {
   if (filters.terms === 'deposit') where.push('d.allow_deposit');
   if (filters.terms === 'dryclean') where.push('d.allow_dryclean');
   if (filters.terms === 'swap') where.push('d.allow_swap');
+  if (filters.terms === 'trade') where.push('d.open_to_trade');
   const dresses = await attachPhotos(await db.all(`
     SELECT d.*, u.name AS owner_name FROM dresses d JOIN users u ON u.id = d.owner_id
     WHERE ${where.join(' AND ')} ORDER BY d.created_at DESC LIMIT 200`, params));
   res.render('browse', { title: 'Browse dresses', dresses, filters, SIZES, LENGTHS });
 });
 
+// Reads the listing fields shared by "post" and "edit".
+function readListing(b) {
+  const f = {
+    title: clean(b.title, 100),
+    designer: clean(b.designer, 60),
+    size: SIZES.includes(b.size) ? b.size : null,
+    color: clean(b.color, 40),
+    length: LENGTHS.includes(b.length) ? b.length : null,
+    description: clean(b.description, 2000),
+    allow_deposit: !!b.allow_deposit,
+    allow_dryclean: !!b.allow_dryclean,
+    allow_swap: !!b.allow_swap,
+    open_to_trade: !!b.open_to_trade,
+  };
+  f.min_deposit = f.allow_deposit ? Math.max(0, Math.min(2000, toInt(b.min_deposit) || 0)) : 0;
+  const errors = [];
+  if (!f.title) errors.push('Give your dress a title.');
+  if (!f.size) errors.push('Pick a size.');
+  if (!f.allow_deposit && !f.allow_dryclean && !f.allow_swap && !f.open_to_trade) {
+    errors.push('Choose at least one way people can borrow or trade for it.');
+  }
+  return { f, errors };
+}
+
 app.get('/dresses/new', requireAuth, (req, res) => {
-  res.render('dress-form', { title: 'Post a dress', SIZES, LENGTHS });
+  res.render('dress-form', { title: 'Post a dress', SIZES, LENGTHS, dress: null });
+});
+
+app.get('/dresses/:id/edit', requireAuth, async (req, res) => {
+  const dress = await db.one('SELECT * FROM dresses WHERE id = $1 AND owner_id = $2', [toInt(req.params.id), req.user.id]);
+  if (!dress) return res.status(404).render('error', { title: 'Not found', message: 'That listing does not exist.' });
+  res.render('dress-form', { title: 'Edit listing', SIZES, LENGTHS, dress });
+});
+
+app.post('/dresses/:id/edit', requireAuth, checkCsrf, async (req, res) => {
+  const id = toInt(req.params.id);
+  const { f, errors } = readListing(req.body);
+  if (errors.length) { flash(req, errors.join(' '), 'err'); return res.redirect(`/dresses/${id}/edit`); }
+  const d = await db.one(`
+    UPDATE dresses SET title = $1, designer = $2, size = $3, color = $4, length = $5, description = $6,
+      allow_deposit = $7, min_deposit = $8, allow_dryclean = $9, allow_swap = $10, open_to_trade = $11
+    WHERE id = $12 AND owner_id = $13 RETURNING id`,
+    [f.title, f.designer, f.size, f.color, f.length, f.description, f.allow_deposit, f.min_deposit,
+     f.allow_dryclean, f.allow_swap, f.open_to_trade, id, req.user.id]);
+  if (!d) return res.sendStatus(404);
+  if (!f.open_to_trade) {
+    await db.all(`UPDATE trades SET status = 'declined', updated_at = now() WHERE dress_id = $1 AND status = 'pending'`, [id]);
+  }
+  flash(req, 'Listing updated.');
+  res.redirect(`/dresses/${id}`);
 });
 
 app.post('/dresses', requireAuth, upload.array('photos', 6), checkCsrf, async (req, res) => {
-  const b = req.body;
-  const title = clean(b.title, 100);
-  const size = SIZES.includes(b.size) ? b.size : null;
-  const allowDeposit = !!b.allow_deposit, allowDryclean = !!b.allow_dryclean, allowSwap = !!b.allow_swap;
-  const errors = [];
-  if (!title) errors.push('Give your dress a title.');
-  if (!size) errors.push('Pick a size.');
+  const { f, errors } = readListing(req.body);
   if (!req.files || req.files.length === 0) errors.push('Add at least one photo (JPG, PNG, WEBP or HEIC).');
-  if (!allowDeposit && !allowDryclean && !allowSwap) errors.push('Choose at least one way people can borrow it.');
   if (errors.length) {
     flash(req, errors.join(' '), 'err');
     return go(req, res, '/dresses/new');
@@ -187,12 +229,10 @@ app.post('/dresses', requireAuth, upload.array('photos', 6), checkCsrf, async (r
   try {
     const d = await db.one(`
       INSERT INTO dresses (owner_id, title, designer, size, color, length, description,
-                           allow_deposit, min_deposit, allow_dryclean, allow_swap)
-      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11) RETURNING id`, [
-      req.user.id, title, clean(b.designer, 60), size, clean(b.color, 40),
-      LENGTHS.includes(b.length) ? b.length : null, clean(b.description, 2000),
-      allowDeposit, allowDeposit ? Math.max(0, Math.min(2000, toInt(b.min_deposit) || 0)) : 0,
-      allowDryclean, allowSwap]);
+                           allow_deposit, min_deposit, allow_dryclean, allow_swap, open_to_trade)
+      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12) RETURNING id`, [
+      req.user.id, f.title, f.designer, f.size, f.color, f.length, f.description,
+      f.allow_deposit, f.min_deposit, f.allow_dryclean, f.allow_swap, f.open_to_trade]);
     await db.all(`INSERT INTO photos (dress_id, key, position) SELECT $1, k, i - 1 FROM unnest($2::text[]) WITH ORDINALITY AS t(k, i)`, [d.id, keys]);
     flash(req, 'Your dress is posted!');
     go(req, res, `/dresses/${d.id}`);
@@ -214,7 +254,9 @@ app.get('/dresses/:id', requireAuth, async (req, res) => {
   const isOwner = dress.owner_id === req.user.id;
   const myDresses = await db.all('SELECT id, title FROM dresses WHERE owner_id = $1 AND active AND id != $2', [req.user.id, dress.id]);
   const myRequest = await db.one(`SELECT * FROM requests WHERE dress_id = $1 AND borrower_id = $2 AND status IN ('pending','accepted') ORDER BY id DESC LIMIT 1`, [dress.id, req.user.id]);
-  res.render('dress', { title: dress.title, dress, isOwner, myDresses, myRequest });
+  const myTrade = await db.one(`SELECT * FROM trades WHERE dress_id = $1 AND offerer_id = $2 AND status IN ('pending','accepted') ORDER BY id DESC LIMIT 1`, [dress.id, req.user.id]);
+  const tradeOffers = isOwner ? (await db.one(`SELECT count(*)::int AS n FROM trades WHERE dress_id = $1 AND status = 'pending'`, [dress.id])).n : 0;
+  res.render('dress', { title: dress.title, dress, isOwner, myDresses, myRequest, myTrade, tradeOffers, offer: req.query.offer || '' });
 });
 
 app.post('/dresses/:id/delete', requireAuth, checkCsrf, async (req, res) => {
@@ -222,6 +264,8 @@ app.post('/dresses/:id/delete', requireAuth, checkCsrf, async (req, res) => {
   const dress = id && await db.one('SELECT id FROM dresses WHERE id = $1 AND owner_id = $2', [id, req.user.id]);
   if (!dress) return res.sendStatus(404);
   const photos = await db.all('SELECT key FROM photos WHERE dress_id = $1', [dress.id]);
+  await db.all(`UPDATE trades SET status = 'cancelled', updated_at = now()
+                WHERE status IN ('pending','accepted') AND id IN (SELECT trade_id FROM trade_items WHERE dress_id = $1)`, [dress.id]);
   await db.all('DELETE FROM dresses WHERE id = $1', [dress.id]);
   await storage.remove(photos.map((p) => p.key));
   flash(req, 'Listing removed.');
@@ -277,16 +321,119 @@ app.post('/requests/:id/:action', requireAuth, checkCsrf, async (req, res) => {
   const r = await db.one(`SELECT r.*, d.owner_id FROM requests r JOIN dresses d ON d.id = r.dress_id WHERE r.id = $1`, [toInt(req.params.id)]);
   if (!r) return res.sendStatus(404);
   const isOwner = r.owner_id === req.user.id, isBorrower = r.borrower_id === req.user.id;
+  const back = '/closet' + (isOwner ? '#received' : '#sent');
+  const action = req.params.action;
+
+  // Temporary swaps: each person confirms they got their own dress back; it's done when both have.
+  if (action === 'gotback') {
+    if (r.terms !== 'swap' || r.status !== 'accepted' || !(isOwner || isBorrower)) return res.sendStatus(400);
+    const col = isOwner ? 'owner_got_back' : 'borrower_got_back';
+    await db.all(`UPDATE requests SET ${col} = true, updated_at = now(),
+                  status = CASE WHEN (owner_got_back OR $2) AND (borrower_got_back OR $3) THEN 'returned' ELSE status END
+                  WHERE id = $1`, [r.id, isOwner, isBorrower]);
+    return res.redirect(back);
+  }
+
   const transitions = {
-    accept:   { who: isOwner,    from: ['pending'],             to: 'accepted' },
-    decline:  { who: isOwner,    from: ['pending'],             to: 'declined' },
-    returned: { who: isOwner,    from: ['accepted'],            to: 'returned' },
-    cancel:   { who: isBorrower, from: ['pending', 'accepted'], to: 'cancelled' },
+    accept:   { who: isOwner,                         from: ['pending'],             to: 'accepted' },
+    decline:  { who: isOwner,                         from: ['pending'],             to: 'declined' },
+    returned: { who: isOwner && r.terms !== 'swap',   from: ['accepted'],            to: 'returned' },
+    cancel:   { who: isBorrower,                      from: ['pending', 'accepted'], to: 'cancelled' },
   };
-  const t = transitions[req.params.action];
+  const t = transitions[action];
   if (!t || !t.who || !t.from.includes(r.status)) return res.sendStatus(400);
   await db.all(`UPDATE requests SET status = $1, updated_at = now() WHERE id = $2`, [t.to, r.id]);
-  res.redirect('/closet' + (isOwner ? '#received' : '#sent'));
+  res.redirect(back);
+});
+
+// ---------- permanent trades ----------
+const asList = (v) => (Array.isArray(v) ? v : v === undefined ? [] : [v]);
+
+app.post('/dresses/:id/trade', requireAuth, checkCsrf, async (req, res) => {
+  const id = toInt(req.params.id);
+  const dress = id && await db.one('SELECT * FROM dresses WHERE id = $1 AND active', [id]);
+  if (!dress) return res.sendStatus(404);
+  const fail = (msg) => { flash(req, msg, 'err'); res.redirect(`/dresses/${dress.id}#trade`); };
+  if (dress.owner_id === req.user.id) return fail("That's your own dress!");
+  if (!dress.open_to_trade) return fail('This dress is not up for trade.');
+
+  const ids = [...new Set(asList(req.body.offer_ids).map(toInt).filter(Boolean))].slice(0, 5);
+  if (!ids.length) return fail('Pick at least one of your dresses to offer.');
+  const mine = await db.all('SELECT id FROM dresses WHERE id = ANY($1) AND owner_id = $2 AND active', [ids, req.user.id]);
+  if (mine.length !== ids.length) return fail('You can only offer dresses you have posted.');
+  const open = await db.one(`SELECT id FROM trades WHERE dress_id = $1 AND offerer_id = $2 AND status IN ('pending','accepted')`, [dress.id, req.user.id]);
+  if (open) return fail('You already have an open trade offer for this dress.');
+
+  await db.tx(async (q) => {
+    const [t] = await q(`INSERT INTO trades (dress_id, owner_id, offerer_id, message) VALUES ($1, $2, $3, $4) RETURNING id`,
+      [dress.id, dress.owner_id, req.user.id, clean(req.body.message, 1000)]);
+    await q('INSERT INTO trade_items (trade_id, dress_id) SELECT $1, unnest($2::int[])', [t.id, ids]);
+  });
+  flash(req, 'Trade offer sent! If it\u2019s accepted, you\u2019ll both see each other\u2019s contact info to meet up.');
+  res.redirect('/closet#trades-sent');
+});
+
+app.post('/trades/:id/:action', requireAuth, checkCsrf, async (req, res) => {
+  const t = await db.one('SELECT * FROM trades WHERE id = $1', [toInt(req.params.id)]);
+  if (!t) return res.sendStatus(404);
+  const isOwner = t.owner_id === req.user.id, isOfferer = t.offerer_id === req.user.id;
+  if (!isOwner && !isOfferer) return res.sendStatus(403);
+  const back = '/closet' + (isOwner ? '#trades-received' : '#trades-sent');
+  const fail = (msg) => { flash(req, msg, 'err'); res.redirect(back); };
+  const action = req.params.action;
+
+  // Every dress in the trade must still belong to the person giving it.
+  const stillValid = async (q) => {
+    const [target] = await q('SELECT owner_id FROM dresses WHERE id = $1', [t.dress_id]);
+    const items = await q('SELECT d.id, d.owner_id FROM trade_items i JOIN dresses d ON d.id = i.dress_id WHERE i.trade_id = $1', [t.id]);
+    return target && target.owner_id === t.owner_id && items.length > 0 && items.every((d) => d.owner_id === t.offerer_id);
+  };
+
+  if (action === 'accept' && isOwner && t.status === 'pending') {
+    if (!(await stillValid(db.all))) return fail('One of the dresses in this offer is no longer available.');
+    await db.all(`UPDATE trades SET status = 'accepted', updated_at = now() WHERE id = $1`, [t.id]);
+    await db.all(`UPDATE trades SET status = 'declined', updated_at = now() WHERE dress_id = $1 AND status = 'pending' AND id != $2`, [t.dress_id, t.id]);
+    flash(req, 'Trade accepted! Meet up to exchange dresses, then both of you tap \u201cWe\u2019ve swapped\u201d.');
+  } else if (action === 'decline' && isOwner && t.status === 'pending') {
+    await db.all(`UPDATE trades SET status = 'declined', updated_at = now() WHERE id = $1`, [t.id]);
+  } else if (action === 'cancel' && (isOfferer ? ['pending', 'accepted'] : ['accepted']).includes(t.status)) {
+    await db.all(`UPDATE trades SET status = 'cancelled', updated_at = now() WHERE id = $1`, [t.id]);
+  } else if (action === 'confirm' && t.status === 'accepted') {
+    const done = await db.tx(async (q) => {
+      const [row] = await q(`UPDATE trades SET ${isOwner ? 'owner_confirmed' : 'offerer_confirmed'} = true, updated_at = now()
+                             WHERE id = $1 AND status = 'accepted' RETURNING *`, [t.id]);
+      if (!row || !(row.owner_confirmed && row.offerer_confirmed)) return false;
+      if (!(await stillValid(q))) throw new Error('trade no longer valid');
+      // Hand over ownership both ways.
+      const items = (await q('SELECT dress_id FROM trade_items WHERE trade_id = $1', [t.id])).map((r) => r.dress_id);
+      const moved = [t.dress_id, ...items];
+      await q('UPDATE dresses SET owner_id = $1, open_to_trade = false WHERE id = $2', [t.offerer_id, t.dress_id]);
+      await q('UPDATE dresses SET owner_id = $1, open_to_trade = false WHERE id = ANY($2)', [t.owner_id, items]);
+      await q(`UPDATE trades SET status = 'completed', updated_at = now() WHERE id = $1`, [t.id]);
+      // Other open offers and borrow requests involving these dresses no longer make sense.
+      await q(`UPDATE trades SET status = 'cancelled', updated_at = now()
+               WHERE status IN ('pending','accepted') AND id != $1
+                 AND (dress_id = ANY($2) OR id IN (SELECT trade_id FROM trade_items WHERE dress_id = ANY($2)))`, [t.id, moved]);
+      await q(`UPDATE requests SET status = 'cancelled', updated_at = now() WHERE status = 'pending' AND dress_id = ANY($1)`, [moved]);
+      return true;
+    }).catch((e) => { if (e.message === 'trade no longer valid') return 'invalid'; throw e; });
+    if (done === 'invalid') return fail('One of the dresses in this trade is no longer available.');
+    flash(req, done ? 'Trade complete! The dresses now show up in each other\u2019s closets.' : 'Got it. The trade completes once the other person confirms too.');
+  } else {
+    return res.sendStatus(400);
+  }
+  res.redirect(back);
+});
+
+// ---------- swap tab ----------
+app.get('/swaps', requireAuth, async (req, res) => {
+  const list = async (cond) => attachPhotos(await db.all(`
+    SELECT d.*, u.name AS owner_name FROM dresses d JOIN users u ON u.id = d.owner_id
+    WHERE d.active AND ${cond} AND d.owner_id != $1 ORDER BY d.created_at DESC LIMIT 100`, [req.user.id]));
+  const forTrade = await list('d.open_to_trade');
+  const forSwap = await list('d.allow_swap');
+  const myCount = (await db.one('SELECT count(*)::int AS n FROM dresses WHERE owner_id = $1 AND active', [req.user.id])).n;
+  res.render('swaps', { title: 'Swap', forTrade, forSwap, myCount });
 });
 
 app.get('/closet', requireAuth, async (req, res) => {
@@ -303,7 +450,26 @@ app.get('/closet', requireAuth, async (req, res) => {
     LEFT JOIN dresses sd ON sd.id = r.swap_dress_id`;
   const received = await db.all(`${base} WHERE d.owner_id = $1 ORDER BY (r.status = 'pending') DESC, r.created_at DESC`, [req.user.id]);
   const sent = await db.all(`${base} WHERE r.borrower_id = $1 ORDER BY r.created_at DESC`, [req.user.id]);
-  res.render('closet', { title: 'My closet', listings, received, sent });
+
+  const trades = await db.all(`
+    SELECT t.*, d.title AS dress_title,
+           o.name AS owner_name, o.email AS owner_email, o.phone AS owner_phone,
+           f.name AS offerer_name, f.email AS offerer_email, f.phone AS offerer_phone, f.class_year AS offerer_year
+    FROM trades t
+    JOIN dresses d ON d.id = t.dress_id
+    JOIN users o ON o.id = t.owner_id
+    JOIN users f ON f.id = t.offerer_id
+    WHERE t.owner_id = $1 OR t.offerer_id = $1
+    ORDER BY (t.status IN ('pending','accepted')) DESC, t.created_at DESC`, [req.user.id]);
+  const items = trades.length ? await db.all(`
+    SELECT i.trade_id, d.id, d.title FROM trade_items i JOIN dresses d ON d.id = i.dress_id WHERE i.trade_id = ANY($1)`,
+    [trades.map((t) => t.id)]) : [];
+  for (const t of trades) t.items = items.filter((i) => i.trade_id === t.id);
+  res.render('closet', {
+    title: 'My closet', listings, received, sent,
+    tradesReceived: trades.filter((t) => t.owner_id === req.user.id),
+    tradesSent: trades.filter((t) => t.offerer_id === req.user.id),
+  });
 });
 
 // ---------- errors ----------

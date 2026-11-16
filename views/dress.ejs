@@ -14,61 +14,101 @@
     <div class="tags">
       <% if (dress.allow_deposit) { %><i>Deposit<%= dress.min_deposit ? ' (min $' + dress.min_deposit + ')' : '' %></i><% } %>
       <% if (dress.allow_dryclean) { %><i>Dry clean agreement</i><% } %>
-      <% if (dress.allow_swap) { %><i>Open to swaps</i><% } %>
+      <% if (dress.allow_swap) { %><i>Temporary swap</i><% } %>
+      <% if (dress.open_to_trade) { %><i class="trade">Up for trade</i><% } %>
     </div>
 
+    <% const canBorrow = dress.allow_deposit || dress.allow_dryclean || dress.allow_swap; %>
     <% if (isOwner) { %>
       <div class="card soft">
         <p>This is your listing<%= dress.active ? '' : ' (hidden)' %>. Requests show up in <a href="/closet#received">My closet</a>.</p>
-      </div>
-    <% } else if (myRequest) { %>
-      <div class="card soft">
-        <p>You have a <strong><%= myRequest.status %></strong> request for this dress. <a href="/closet#sent">View in My closet</a>.</p>
+        <% if (tradeOffers) { %><p><strong><%= tradeOffers %> trade offer<%= tradeOffers > 1 ? 's' : '' %></strong> waiting. <a href="/closet#trades-received">Review</a></p><% } %>
+        <a class="btn ghost sm" href="/dresses/<%= dress.id %>/edit">Edit listing</a>
       </div>
     <% } else { %>
-      <form method="post" action="/dresses/<%= dress.id %>/request" class="card stack" id="reqForm">
-        <h2>Request to borrow</h2>
-        <input type="hidden" name="_csrf" value="<%= csrf %>">
-        <label>Event <input name="event_name" maxlength="80" placeholder="Ivy formal, Princeton Prom…"></label>
-        <div class="row">
-          <label>Pick up <input type="date" name="pickup_date" required></label>
-          <label>Return by <input type="date" name="return_date" required></label>
+
+      <% if (dress.open_to_trade) { %>
+        <section id="trade">
+        <% if (myTrade) { %>
+          <div class="card soft">
+            <p>You have a <strong><%= myTrade.status %></strong> trade offer for this dress. <a href="/closet#trades-sent">View in My closet</a>.</p>
+          </div>
+        <% } else { %>
+          <form method="post" action="/dresses/<%= dress.id %>/trade" class="card stack trade-card">
+            <h2>Trade for it</h2>
+            <p class="muted">Offer one or more of your dresses. If the owner accepts, you meet up and swap, and each of you keeps the other's dress.</p>
+            <input type="hidden" name="_csrf" value="<%= csrf %>">
+            <% if (myDresses.length) { %>
+              <fieldset>
+                <legend>Dresses you'll give</legend>
+                <% myDresses.forEach(m => { %>
+                  <label class="check"><input type="checkbox" name="offer_ids" value="<%= m.id %>"> <%= m.title %></label>
+                <% }) %>
+              </fieldset>
+              <label>Message <textarea name="message" rows="2" maxlength="1000" placeholder="I love this dress! Would you trade for my…"></textarea></label>
+              <button class="btn big">Send trade offer</button>
+            <% } else { %>
+              <p><a class="btn" href="/dresses/new">Post a dress</a> first so you have something to offer.</p>
+            <% } %>
+          </form>
+        <% } %>
+        </section>
+      <% } %>
+
+      <% if (!canBorrow) { %>
+      <% } else if (myRequest) { %>
+        <div class="card soft">
+          <p>You have a <strong><%= myRequest.status %></strong> request for this dress. <a href="/closet#sent">View in My closet</a>.</p>
         </div>
-        <fieldset>
-          <legend>Your terms</legend>
-          <% if (dress.allow_deposit) { %>
-            <label class="check"><input type="radio" name="terms" value="deposit" required> Put down a deposit</label>
-            <label class="indent" data-for="deposit">Deposit amount ($)
-              <input type="number" name="deposit_amount" min="<%= dress.min_deposit %>" max="5000" value="<%= dress.min_deposit || '' %>">
-              <small class="muted">Returned to you when the dress comes back in the same condition. Arrange payment (e.g. Venmo) directly.</small>
-            </label>
-          <% } %>
-          <% if (dress.allow_dryclean) { %>
-            <label class="check"><input type="radio" name="terms" value="dryclean" required> Agree to dry clean it</label>
-            <label class="check indent" data-for="dryclean"><input type="checkbox" name="dryclean_agree"> I agree to have this dress professionally dry cleaned at my expense before returning it.</label>
-          <% } %>
-          <% if (dress.allow_swap) { %>
-            <label class="check"><input type="radio" name="terms" value="swap" required> Swap one of my dresses</label>
-            <label class="indent" data-for="swap">
-              <% if (myDresses.length) { %>
-                <select name="swap_dress_id"><% myDresses.forEach(m => { %><option value="<%= m.id %>"><%= m.title %></option><% }) %></select>
-              <% } else { %>
-                <small class="muted">You need to <a href="/dresses/new">post a dress</a> first to offer a swap.</small>
-              <% } %>
-            </label>
-          <% } %>
-        </fieldset>
-        <label>Message <textarea name="message" rows="3" maxlength="1000" placeholder="Hi! I'd love to borrow this for…"></textarea></label>
-        <button class="btn big">Send request</button>
-      </form>
-      <script>
-        const f = document.getElementById('reqForm');
-        const sync = () => {
-          const v = (f.querySelector('input[name=terms]:checked') || {}).value;
-          f.querySelectorAll('[data-for]').forEach(el => el.hidden = el.dataset.for !== v);
-        };
-        f.addEventListener('change', sync); sync();
-      </script>
+      <% } else { %>
+        <form method="post" action="/dresses/<%= dress.id %>/request" class="card stack" id="reqForm">
+          <h2 id="borrowTitle">Borrow it</h2>
+          <input type="hidden" name="_csrf" value="<%= csrf %>">
+          <label>Event <input name="event_name" maxlength="80" placeholder="Ivy formal, Princeton Prom…"></label>
+          <div class="row">
+            <label>Pick up <input type="date" name="pickup_date" required></label>
+            <label>Return by <input type="date" name="return_date" required></label>
+          </div>
+          <fieldset>
+            <legend>Your terms</legend>
+            <% if (dress.allow_deposit) { %>
+              <label class="check"><input type="radio" name="terms" value="deposit" required> Put down a deposit</label>
+              <label class="indent" data-for="deposit">Deposit amount ($)
+                <input type="number" name="deposit_amount" min="<%= dress.min_deposit %>" max="5000" value="<%= dress.min_deposit || '' %>">
+                <small class="muted">Returned to you when the dress comes back in the same condition. Arrange payment (e.g. Venmo) directly.</small>
+              </label>
+            <% } %>
+            <% if (dress.allow_dryclean) { %>
+              <label class="check"><input type="radio" name="terms" value="dryclean" required> Agree to dry clean it</label>
+              <label class="check indent" data-for="dryclean"><input type="checkbox" name="dryclean_agree"> I agree to have this dress professionally dry cleaned at my expense before returning it.</label>
+            <% } %>
+            <% if (dress.allow_swap) { %>
+              <label class="check"><input type="radio" name="terms" value="swap" required <%= offer === 'swap' ? 'checked' : '' %>> Offer a swap: lend them one of my dresses for the same dates</label>
+              <label class="indent" data-for="swap">
+                <% if (myDresses.length) { %>
+                  <select name="swap_dress_id"><% myDresses.forEach(m => { %><option value="<%= m.id %>"><%= m.title %></option><% }) %></select>
+                  <small class="muted">You each give the other's dress back afterward.</small>
+                <% } else { %>
+                  <small class="muted">You need to <a href="/dresses/new">post a dress</a> first to offer a swap.</small>
+                <% } %>
+              </label>
+            <% } %>
+          </fieldset>
+          <label>Message <textarea name="message" rows="3" maxlength="1000" placeholder="Hi! I'd love to borrow this for…"></textarea></label>
+          <button class="btn big" id="borrowBtn">Send request</button>
+        </form>
+        <script>
+          const f = document.getElementById('reqForm');
+          const sync = () => {
+            const v = (f.querySelector('input[name=terms]:checked') || {}).value;
+            f.querySelectorAll('[data-for]').forEach(el => el.hidden = el.dataset.for !== v);
+            document.getElementById('borrowTitle').textContent = v === 'swap' ? 'Offer a swap' : 'Borrow it';
+            document.getElementById('borrowBtn').textContent = v === 'swap' ? 'Send swap offer' : 'Send request';
+          };
+          f.addEventListener('change', sync); sync();
+          if (location.search.includes('offer=swap')) f.scrollIntoView({ behavior: 'smooth' });
+        </script>
+      <% } %>
     <% } %>
   </div>
 </div>

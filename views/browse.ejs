@@ -11,7 +11,8 @@
     <option value="">Any terms</option>
     <option value="deposit" <%= filters.terms === 'deposit' ? 'selected' : '' %>>Deposit</option>
     <option value="dryclean" <%= filters.terms === 'dryclean' ? 'selected' : '' %>>Dry clean</option>
-    <option value="swap" <%= filters.terms === 'swap' ? 'selected' : '' %>>Swap</option>
+    <option value="swap" <%= filters.terms === 'swap' ? 'selected' : '' %>>Temporary swap</option>
+    <option value="trade" <%= filters.terms === 'trade' ? 'selected' : '' %>>Up for trade</option>
   </select>
   <button class="btn ghost">Filter</button>
 </form>
@@ -29,6 +30,7 @@
           <% if (d.allow_deposit) { %><i>Deposit<%= d.min_deposit ? ' $' + d.min_deposit + '+' : '' %></i><% } %>
           <% if (d.allow_dryclean) { %><i>Dry clean</i><% } %>
           <% if (d.allow_swap) { %><i>Swap</i><% } %>
+          <% if (d.open_to_trade) { %><i class="trade">Up for trade</i><% } %>
         </span>
       </div>
     </a>
