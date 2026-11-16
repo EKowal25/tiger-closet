@@ -290,29 +290,27 @@ app.post('/dresses/:id/request', requireAuth, checkCsrf, async (req, res) => {
   const dateRe = /^\d{4}-\d{2}-\d{2}$/;
   if (!dateRe.test(pickup) || !dateRe.test(ret) || ret < pickup) return fail('Please enter valid pickup and return dates.');
 
-  const terms = b.terms;
+  // Borrowers can combine terms. Swap is always allowed as an offer; the owner decides when accepting.
+  const offer = { deposit: !!b.offer_deposit, dryclean: !!b.offer_dryclean, swap: !!b.offer_swap };
+  if (!offer.deposit && !offer.dryclean && !offer.swap) return fail('Choose at least one of your terms: deposit, dry clean or swap.');
   let deposit = null, swapId = null;
-  if (terms === 'deposit') {
-    if (!dress.allow_deposit) return fail('This owner is not accepting deposits.');
+  if (offer.deposit) {
     deposit = toInt(b.deposit_amount);
     if (deposit === null || deposit < dress.min_deposit || deposit > 5000) {
       return fail(`Please enter a deposit of at least $${dress.min_deposit}.`);
     }
-  } else if (terms === 'dryclean') {
-    if (!dress.allow_dryclean) return fail('This owner is not accepting dry-clean agreements.');
-    if (!b.dryclean_agree) return fail('Please check the box agreeing to dry clean the dress before returning it.');
-  } else if (terms === 'swap') {
-    if (!dress.allow_swap) return fail('This owner is not open to swaps.');
+  }
+  if (offer.dryclean && !b.dryclean_agree) return fail('Please check the box agreeing to dry clean the dress before returning it.');
+  if (offer.swap) {
     const mine = await db.one('SELECT id FROM dresses WHERE id = $1 AND owner_id = $2 AND active', [toInt(b.swap_dress_id), req.user.id]);
     if (!mine) return fail('Pick one of your posted dresses to offer in the swap.');
     swapId = mine.id;
-  } else {
-    return fail('Choose how you would like to borrow this dress.');
   }
 
-  await db.all(`INSERT INTO requests (dress_id, borrower_id, event_name, pickup_date, return_date, terms, deposit_amount, swap_dress_id, message)
-                VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)`,
-    [dress.id, req.user.id, clean(b.event_name, 80), pickup, ret, terms, deposit, swapId, clean(b.message, 1000)]);
+  await db.all(`INSERT INTO requests (dress_id, borrower_id, event_name, pickup_date, return_date,
+                  offer_deposit, offer_dryclean, offer_swap, deposit_amount, swap_dress_id, message)
+                VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)`,
+    [dress.id, req.user.id, clean(b.event_name, 80), pickup, ret, offer.deposit, offer.dryclean, offer.swap, deposit, swapId, clean(b.message, 1000)]);
   flash(req, 'Request sent! You will see the owner’s contact info here once your request is accepted.');
   res.redirect('/closet#sent');
 });
@@ -326,7 +324,7 @@ app.post('/requests/:id/:action', requireAuth, checkCsrf, async (req, res) => {
 
   // Temporary swaps: each person confirms they got their own dress back; it's done when both have.
   if (action === 'gotback') {
-    if (r.terms !== 'swap' || r.status !== 'accepted' || !(isOwner || isBorrower)) return res.sendStatus(400);
+    if (!r.offer_swap || r.status !== 'accepted' || !(isOwner || isBorrower)) return res.sendStatus(400);
     const col = isOwner ? 'owner_got_back' : 'borrower_got_back';
     await db.all(`UPDATE requests SET ${col} = true, updated_at = now(),
                   status = CASE WHEN (owner_got_back OR $2) AND (borrower_got_back OR $3) THEN 'returned' ELSE status END
@@ -337,7 +335,7 @@ app.post('/requests/:id/:action', requireAuth, checkCsrf, async (req, res) => {
   const transitions = {
     accept:   { who: isOwner,                         from: ['pending'],             to: 'accepted' },
     decline:  { who: isOwner,                         from: ['pending'],             to: 'declined' },
-    returned: { who: isOwner && r.terms !== 'swap',   from: ['accepted'],            to: 'returned' },
+    returned: { who: isOwner && !r.offer_swap,        from: ['accepted'],            to: 'returned' },
     cancel:   { who: isBorrower,                      from: ['pending', 'accepted'], to: 'cancelled' },
   };
   const t = transitions[action];
