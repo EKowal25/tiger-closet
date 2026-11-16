@@ -1,19 +1,21 @@
 @import url('https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,500;12..96,700;12..96,800&family=DM+Sans:opsz,wght@9..40,400;9..40,500;9..40,700&family=DM+Mono:wght@500&display=swap');
 
-/* ---------- tokens ---------- */
+/* ---------- tokens: "Orange & Black Tie" ----------
+   --lime / --pink / --sky are the three highlight colors (names kept from the original theme):
+   gold, sand and stone here. */
 :root {
-  --bg: #f3eee4; --dot: #e2d9c8; --surface: #fffdf8; --ink: #111111; --muted: #5d574e;
-  --line: #111111; --accent: #ff5a1f; --accent-ink: #111111; --soft: #ffe7d6;
-  --lime: #d4ff3f; --pink: #ffa8d2; --sky: #a9dcff;
-  --ok: #0f7a3d; --ok-bg: #d4ff3f; --err: #d1170d; --err-bg: #ffd2cc;
+  --bg: #f7f2ea; --dot: #e8dfd0; --surface: #ffffff; --ink: #141414; --muted: #6b6359;
+  --line: #141414; --accent: #e77500; --accent-ink: #141414; --soft: #fbe3c8;
+  --lime: #f5c26b; --pink: #e8d5c0; --sky: #d9d2c5; --butter: #fbe7b5;
+  --ok: #2f6b3a; --ok-bg: #f5c26b; --err: #b3261e; --err-bg: #f8d3cc;
   --shadow: 4px 4px 0 var(--ink); --shadow-lg: 7px 7px 0 var(--ink);
   --radius: 16px;
 }
 @media (prefers-color-scheme: dark) {
   :root {
-    --bg: #121110; --dot: #24221f; --surface: #1b1a18; --ink: #f3eee4; --muted: #b3aa9c;
-    --line: #f3eee4; --soft: #2e2119; --accent: #ff6a33; --accent-ink: #111111;
-    --ok: #d4ff3f; --ok-bg: #2a3410; --err: #ff8a7a; --err-bg: #3a1714;
+    --bg: #111111; --dot: #222120; --surface: #1b1a19; --ink: #f7f2ea; --muted: #b5ab9e;
+    --line: #f7f2ea; --soft: #33240f; --accent: #f58025; --accent-ink: #141414;
+    --ok: #f5c26b; --ok-bg: #3a2c10; --err: #ff8a7a; --err-bg: #3a1714;
     --shadow: 4px 4px 0 var(--accent); --shadow-lg: 7px 7px 0 var(--accent);
   }
 }
@@ -175,7 +177,7 @@ a.tile:hover { transform: translate(-3px, -3px) rotate(-.6deg); box-shadow: var(
 .tags i:nth-child(2) { background: var(--sky); color: #111; }
 .tags i:nth-child(3) { background: var(--pink); color: #111; }
 .tags i.trade { background: var(--lime); color: #111; }
-.tags i.free { background: #ffe14d; color: #111; }
+.tags i.free { background: var(--butter); color: #111; }
 
 /* ---------- dress page ---------- */
 .detail { display: grid; grid-template-columns: 1.1fr 1fr; gap: 40px; align-items: start; }
@@ -190,7 +192,7 @@ a.tile:hover { transform: translate(-3px, -3px) rotate(-.6deg); box-shadow: var(
 .info h2 { margin-top: 0; }
 .info section#trade { scroll-margin-top: 90px; }
 .trade-card { background: var(--lime); color: #111; }
-.trade-card .muted { color: #2e3a0c; }
+.trade-card .muted { color: #4a3a1a; }
 .trade-card fieldset { background: rgba(255,255,255,.55); }
 .trade-card input, .trade-card textarea { background: #fffdf8; color: #111; border-color: #111; }
 
@@ -212,13 +214,13 @@ a.tile:hover { transform: translate(-3px, -3px) rotate(-.6deg); box-shadow: var(
 .actions form { margin: 0; }
 .items { margin: 8px 0 0; padding-left: 20px; }
 .confirmed { color: var(--ok); font-weight: 700; font-size: 14px; }
-@media (prefers-color-scheme: light) { .confirmed { color: #0f7a3d; } }
+@media (prefers-color-scheme: light) { .confirmed { color: var(--ok); } }
 .status {
   font: 700 11px 'DM Mono', monospace; text-transform: uppercase; letter-spacing: .06em;
   padding: 3px 9px; border-radius: 999px; margin-left: 8px; border: 1.5px solid var(--line); background: var(--surface); color: var(--ink);
   display: inline-block; transform: rotate(-2deg);
 }
-.status.pending { background: #ffe14d; color: #111; }
+.status.pending { background: var(--butter); color: #111; }
 .status.accepted { background: var(--sky); color: #111; }
 .status.declined, .status.cancelled { background: var(--err-bg); color: var(--err); }
 .status.completed, .status.returned { background: var(--lime); color: #111; }
@@ -242,4 +244,12 @@ a.tile:hover { transform: translate(-3px, -3px) rotate(-.6deg); box-shadow: var(
   .hero::before { position: static; display: inline-block; margin-bottom: 14px; }
   .steps div { transform: none !important; }
   .card { padding: 20px; }
+}
+
+/* Black-tie: the top bar and footer stay black in dark mode too. */
+@media (prefers-color-scheme: dark) {
+  .nav, .foot { background: #050505; color: #f7f2ea; }
+  .brand, .brand:hover, .nav nav a, .nav nav a:hover, .nav button.link { color: #f7f2ea; }
+  .nav nav a:hover { border-color: #f7f2ea; }
+  .nav nav a.on { color: #141414; }
 }
