@@ -13,12 +13,14 @@
     <% if (dress.description) { %><p class="desc"><%= dress.description %></p><% } %>
     <div class="tags">
       <% if (dress.allow_deposit) { %><i>Deposit<%= dress.min_deposit ? ' (min $' + dress.min_deposit + ')' : '' %></i><% } %>
+      <% if (dress.allow_fee) { %><i>Rental fee<%= dress.rental_fee ? ' $' + dress.rental_fee : '' %></i><% } %>
       <% if (dress.allow_dryclean) { %><i>Dry clean agreement</i><% } %>
+      <% if (dress.allow_free) { %><i class="free">Free for friends</i><% } %>
       <% if (dress.allow_swap) { %><i>Temporary swap</i><% } %>
       <% if (dress.open_to_trade) { %><i class="trade">Up for trade</i><% } %>
     </div>
 
-    <% const canBorrow = dress.allow_deposit || dress.allow_dryclean || dress.allow_swap; /* lend-listed; trade-only dresses skip the borrow form */ %>
+    <% const canBorrow = dress.allow_deposit || dress.allow_dryclean || dress.allow_swap || dress.allow_free || dress.allow_fee; /* trade-only dresses skip the borrow form */ %>
     <% if (isOwner) { %>
       <div class="card soft">
         <p>This is your listing<%= dress.active ? '' : ' (hidden)' %>. Requests show up in <a href="/closet#received">My closet</a>.</p>
@@ -77,8 +79,14 @@
               <input type="number" name="deposit_amount" min="<%= dress.min_deposit %>" max="5000" value="<%= dress.min_deposit || '' %>">
               <small class="muted">Returned to you when the dress comes back in the same condition. Arrange payment (e.g. Venmo) directly.</small>
             </label>
+            <label class="check"><input type="checkbox" name="offer_fee"> <span>Pay a rental fee <small class="muted">(not returned)</small><%- dress.allow_fee ? '' : unlisted %></span></label>
+            <label class="indent" data-for="offer_fee">Rental fee ($)
+              <input type="number" name="fee_amount" min="<%= dress.allow_fee ? dress.rental_fee : 1 %>" max="5000" value="<%= dress.allow_fee && dress.rental_fee ? dress.rental_fee : '' %>">
+              <small class="muted">The owner keeps this. You can combine it with a refundable deposit.</small>
+            </label>
             <label class="check"><input type="checkbox" name="offer_dryclean"> <span>Agree to dry clean it<%- dress.allow_dryclean ? '' : unlisted %></span></label>
             <label class="check indent" data-for="offer_dryclean"><input type="checkbox" name="dryclean_agree"> I agree to have this dress professionally dry cleaned at my expense before returning it.</label>
+            <label class="check"><input type="checkbox" name="offer_free"> <span>Borrow for free <small class="muted">(we know each other)</small><%- dress.allow_free ? '' : unlisted %></span></label>
             <label class="check"><input type="checkbox" name="offer_swap" <%= offer === 'swap' ? 'checked' : '' %>> <span>Swap: lend them one of my dresses for the same dates<%- dress.allow_swap ? '' : unlisted %></span></label>
             <label class="indent" data-for="offer_swap">
               <% if (myDresses.length) { %>
@@ -97,13 +105,15 @@
           const on = (n) => f.querySelector(`input[name=${n}]`).checked;
           const sync = () => {
             f.querySelectorAll('[data-for]').forEach(el => el.hidden = !on(el.dataset.for));
-            const swapOnly = on('offer_swap') && !on('offer_deposit') && !on('offer_dryclean');
+            const swapOnly = on('offer_swap') && !on('offer_deposit') && !on('offer_dryclean') && !on('offer_fee') && !on('offer_free');
             document.getElementById('borrowTitle').textContent = swapOnly ? 'Offer a swap' : 'Borrow it';
             document.getElementById('borrowBtn').textContent = swapOnly ? 'Send swap offer' : 'Send request';
           };
           f.addEventListener('change', sync); sync();
           f.addEventListener('submit', (e) => {
-            if (!on('offer_deposit') && !on('offer_dryclean') && !on('offer_swap')) { e.preventDefault(); alert('Pick at least one of your terms.'); }
+            const picked = ['offer_deposit', 'offer_fee', 'offer_dryclean', 'offer_free', 'offer_swap'].some(on);
+            if (!picked) { e.preventDefault(); alert('Pick at least one of your terms.'); }
+            else if (on('offer_free') && on('offer_fee')) { e.preventDefault(); alert('Pick either "free" or a rental fee, not both.'); }
           });
           if (location.search.includes('offer=swap')) f.scrollIntoView({ behavior: 'smooth' });
         </script>

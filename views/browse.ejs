@@ -11,6 +11,8 @@
     <option value="">Any terms</option>
     <option value="deposit" <%= filters.terms === 'deposit' ? 'selected' : '' %>>Deposit</option>
     <option value="dryclean" <%= filters.terms === 'dryclean' ? 'selected' : '' %>>Dry clean</option>
+    <option value="fee" <%= filters.terms === 'fee' ? 'selected' : '' %>>Rental fee</option>
+    <option value="free" <%= filters.terms === 'free' ? 'selected' : '' %>>Free for friends</option>
     <option value="swap" <%= filters.terms === 'swap' ? 'selected' : '' %>>Temporary swap</option>
     <option value="trade" <%= filters.terms === 'trade' ? 'selected' : '' %>>Up for trade</option>
   </select>
@@ -28,7 +30,9 @@
         <span class="muted">Size <%= d.size %><%= d.length ? ' · ' + d.length : '' %><%= d.color ? ' · ' + d.color : '' %></span>
         <span class="tags">
           <% if (d.allow_deposit) { %><i>Deposit<%= d.min_deposit ? ' $' + d.min_deposit + '+' : '' %></i><% } %>
+          <% if (d.allow_fee) { %><i>Rent<%= d.rental_fee ? ' $' + d.rental_fee : '' %></i><% } %>
           <% if (d.allow_dryclean) { %><i>Dry clean</i><% } %>
+          <% if (d.allow_free) { %><i class="free">Free</i><% } %>
           <% if (d.allow_swap) { %><i>Swap</i><% } %>
           <% if (d.open_to_trade) { %><i class="trade">Up for trade</i><% } %>
         </span>
