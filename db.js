@@ -89,6 +89,9 @@ ALTER TABLE dresses  ADD COLUMN IF NOT EXISTS condition        TEXT;
 ALTER TABLE dresses  ADD COLUMN IF NOT EXISTS retail_price     INTEGER;
 ALTER TABLE dresses  ADD COLUMN IF NOT EXISTS retail_estimated BOOLEAN NOT NULL DEFAULT true;
 
+-- Events a dress works best for (owner picks one or more).
+ALTER TABLE dresses  ADD COLUMN IF NOT EXISTS events TEXT[] NOT NULL DEFAULT '{}';
+
 -- Free loans (e.g. between friends) and non-refundable rental fees.
 ALTER TABLE dresses  ADD COLUMN IF NOT EXISTS allow_free  BOOLEAN NOT NULL DEFAULT false;
 ALTER TABLE dresses  ADD COLUMN IF NOT EXISTS allow_fee   BOOLEAN NOT NULL DEFAULT false;
