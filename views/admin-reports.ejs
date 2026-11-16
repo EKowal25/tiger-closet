@@ -1,0 +1,25 @@
+<%- include('partials/header') %>
+<h1>Reports</h1>
+<p class="muted">Only admins can see this page. Open reports are listed first.</p>
+<% if (!reports.length) { %><p class="muted">No reports yet.</p><% } %>
+<% reports.forEach(p => { %>
+  <div class="req card report-row">
+    <div class="meta2">
+      <span class="status <%= p.status === 'open' ? 'pending' : 'returned' %>"><%= p.status %></span>
+      <strong><%= REASONS[p.reason] || p.reason %></strong>
+      <span class="muted"><%= new Date(p.created_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }) %></span>
+    </div>
+    <p><a href="/users/<%= p.reporter_id %>"><%= p.reporter_name %></a> (<%= p.reporter_email %>) reported
+       <a href="/users/<%= p.reported_id %>"><strong><%= p.reported_name %></strong></a> (<%= p.reported_email %>)
+       <%= p.dress_title ? 'about "' + p.dress_title + '"' : '' %>
+       <% if (p.total_against > 1) { %><span class="status declined"><%= p.total_against %> reports against this person</span><% } %></p>
+    <p class="msg">“<%= p.details %>”</p>
+    <div class="actions">
+      <form method="post" action="/admin/reports/<%= p.id %>/<%= p.status === 'open' ? 'resolve' : 'reopen' %>">
+        <input type="hidden" name="_csrf" value="<%= csrf %>">
+        <button class="btn ghost sm"><%= p.status === 'open' ? 'Mark resolved' : 'Reopen' %></button>
+      </form>
+    </div>
+  </div>
+<% }) %>
+<%- include('partials/footer') %>

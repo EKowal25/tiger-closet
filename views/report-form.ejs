@@ -1,0 +1,19 @@
+<%- include('partials/header') %>
+<section class="narrow card">
+  <h1>Report a problem</h1>
+  <p>This is about <a href="/users/<%= other.id %>"><strong><%= other.name %></strong></a> and <strong><%= deal.title %></strong>.</p>
+  <p class="note">Reports are private. They go only to the Tiger Closet team, and the other person is not notified.</p>
+  <form method="post" action="/report/<%= deal.kind %>/<%= deal.id %>" class="stack">
+    <input type="hidden" name="_csrf" value="<%= csrf %>">
+    <label>What happened?
+      <select name="reason" required>
+        <option value="">Choose…</option>
+        <% Object.entries(REASONS).forEach(([k, label]) => { %><option value="<%= k %>"><%= label %></option><% }) %>
+      </select>
+    </label>
+    <label>Details <textarea name="details" rows="5" maxlength="2000" required placeholder="Tell us what happened, with dates. What have you already tried?"></textarea></label>
+    <button class="btn big">Send report</button>
+    <a class="links" href="/closet">Cancel</a>
+  </form>
+</section>
+<%- include('partials/footer') %>
