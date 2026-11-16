@@ -21,6 +21,14 @@
       <label>Color <input name="color" maxlength="40" placeholder="Emerald" value="<%= v('color') %>"></label>
       <label>Designer / brand <input name="designer" maxlength="60" placeholder="Reformation" value="<%= v('designer') %>"></label>
     </div>
+    <fieldset>
+      <legend>Best for <small class="muted">(pick one or more events)</small></legend>
+      <div class="chips">
+        <% EVENTS.forEach(ev => { %>
+          <label class="chip"><input type="checkbox" name="events" value="<%= ev %>" <%= (d.events || []).includes(ev) ? 'checked' : '' %>><span><%= ev %></span></label>
+        <% }) %>
+      </div>
+    </fieldset>
     <label>Description <textarea name="description" rows="4" maxlength="2000" placeholder="Fit notes, fabric, any wear, when it's available…"><%= v('description') %></textarea></label>
 
     <fieldset>
@@ -58,6 +66,14 @@
     <% if (editing) { %><a class="links" href="/dresses/<%= d.id %>">Cancel</a><% } %>
   </form>
 </section>
+<script>
+  document.getElementById('dressForm').addEventListener('submit', (e) => {
+    if (!document.querySelector('input[name=events]:checked')) {
+      e.preventDefault(); e.stopImmediatePropagation();
+      alert('Pick at least one event this dress works best for.');
+    }
+  }, true);
+</script>
 <script src="/pricing.js"></script>
 <script>
   // Live price estimate → suggested deposit and rental price. Fills the boxes until the owner types their own number.

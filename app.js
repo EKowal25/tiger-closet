@@ -24,6 +24,7 @@ if (IS_PROD && !process.env.SESSION_SECRET) {
 
 const SIZES = ['00', '0', '2', '4', '6', '8', '10', '12', '14', '16', '18+', 'XS', 'S', 'M', 'L', 'XL'];
 const LENGTHS = ['Mini', 'Knee', 'Midi', 'Tea', 'Floor-length'];
+const EVENTS = ['Formal / black tie', 'Semi-formal', 'Eating club formal', 'Lawnparties', 'Date night / dinner', 'Wedding guest', 'Graduation / Reunions', 'Themed party', 'Cocktail party'];
 const COLLEGES = ['Butler', 'Forbes', 'Mathey', 'New College West', 'Rockefeller', 'Whitman', 'Yeh', 'Upperclass / Independent', 'Grad'];
 const IMAGE_TYPES = { 'image/jpeg': '.jpg', 'image/png': '.png', 'image/webp': '.webp', 'image/heic': '.heic' };
 
@@ -55,6 +56,7 @@ app.use(async (req, res, next) => {
   res.locals.path = req.path;
   res.locals.photoUrl = (p) => `/photos/${p.key}`;
   res.locals.CONDITIONS = pricing.CONDITIONS;
+  res.locals.EVENTS = EVENTS;
   next();
 });
 
@@ -153,13 +155,14 @@ app.post('/profile', requireAuth, checkCsrf, async (req, res) => {
 });
 
 app.get('/browse', requireAuth, async (req, res) => {
-  const filters = { q: clean(req.query.q, 100), size: clean(req.query.size, 10), length: clean(req.query.length, 20), terms: clean(req.query.terms, 10) };
+  const filters = { q: clean(req.query.q, 100), size: clean(req.query.size, 10), length: clean(req.query.length, 20), terms: clean(req.query.terms, 10), event: clean(req.query.event, 40) };
   const where = ['d.active'];
   const params = [];
   const add = (v) => { params.push(v); return `$${params.length}`; };
   if (filters.q) { const p = add(`%${filters.q}%`); where.push(`(d.title ILIKE ${p} OR d.designer ILIKE ${p} OR d.color ILIKE ${p} OR d.description ILIKE ${p})`); }
   if (filters.size) where.push(`d.size = ${add(filters.size)}`);
   if (filters.length) where.push(`d.length = ${add(filters.length)}`);
+  if (EVENTS.includes(filters.event)) where.push(`${add(filters.event)} = ANY(d.events)`);
   if (filters.terms === 'deposit') where.push('d.allow_deposit');
   if (filters.terms === 'dryclean') where.push('d.allow_dryclean');
   if (filters.terms === 'free') where.push('d.allow_free');
@@ -184,6 +187,7 @@ function readListing(b) {
     allow_deposit: !!b.allow_deposit,
     allow_dryclean: !!b.allow_dryclean,
     allow_free: !!b.allow_free,
+    events: [...new Set([].concat(b.events || []))].filter((e) => EVENTS.includes(e)),
     allow_fee: !!b.allow_fee,
     allow_swap: !!b.allow_swap,
     open_to_trade: !!b.open_to_trade,
@@ -199,6 +203,7 @@ function readListing(b) {
   if (!f.title) errors.push('Give your dress a title.');
   if (!f.size) errors.push('Pick a size.');
   if (!f.condition) errors.push('Pick the condition the dress is in.');
+  if (!f.events.length) errors.push('Pick at least one event this dress works best for.');
   if (!f.allow_deposit && !f.allow_dryclean && !f.allow_swap && !f.allow_free && !f.allow_fee && !f.open_to_trade) {
     errors.push('Choose at least one way people can borrow or trade for it.');
   }
@@ -222,11 +227,11 @@ app.post('/dresses/:id/edit', requireAuth, checkCsrf, async (req, res) => {
   const d = await db.one(`
     UPDATE dresses SET title = $1, designer = $2, size = $3, color = $4, length = $5, description = $6,
       allow_deposit = $7, min_deposit = $8, allow_dryclean = $9, allow_swap = $10, open_to_trade = $11,
-      allow_free = $12, allow_fee = $13, rental_fee = $14, condition = $15, retail_price = $16, retail_estimated = $17
+      allow_free = $12, allow_fee = $13, rental_fee = $14, condition = $15, retail_price = $16, retail_estimated = $17, events = $20
     WHERE id = $18 AND owner_id = $19 RETURNING id`,
     [f.title, f.designer, f.size, f.color, f.length, f.description, f.allow_deposit, f.min_deposit,
      f.allow_dryclean, f.allow_swap, f.open_to_trade, f.allow_free, f.allow_fee, f.rental_fee,
-     f.condition, f.retail_price, f.retail_estimated, id, req.user.id]);
+     f.condition, f.retail_price, f.retail_estimated, id, req.user.id, f.events]);
   if (!d) return res.sendStatus(404);
   if (!f.open_to_trade) {
     await db.all(`UPDATE trades SET status = 'declined', updated_at = now() WHERE dress_id = $1 AND status IN ('pending','countered')`, [id]);
@@ -249,11 +254,11 @@ app.post('/dresses', requireAuth, upload.array('photos', 6), checkCsrf, async (r
     const d = await db.one(`
       INSERT INTO dresses (owner_id, title, designer, size, color, length, description,
                            allow_deposit, min_deposit, allow_dryclean, allow_swap, open_to_trade,
-                           allow_free, allow_fee, rental_fee, condition, retail_price, retail_estimated)
-      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18) RETURNING id`, [
+                           allow_free, allow_fee, rental_fee, condition, retail_price, retail_estimated, events)
+      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19) RETURNING id`, [
       req.user.id, f.title, f.designer, f.size, f.color, f.length, f.description,
       f.allow_deposit, f.min_deposit, f.allow_dryclean, f.allow_swap, f.open_to_trade,
-      f.allow_free, f.allow_fee, f.rental_fee, f.condition, f.retail_price, f.retail_estimated]);
+      f.allow_free, f.allow_fee, f.rental_fee, f.condition, f.retail_price, f.retail_estimated, f.events]);
     await db.all(`INSERT INTO photos (dress_id, key, position) SELECT $1, k, i - 1 FROM unnest($2::text[]) WITH ORDINALITY AS t(k, i)`, [d.id, keys]);
     flash(req, 'Your dress is posted!');
     go(req, res, `/dresses/${d.id}`);

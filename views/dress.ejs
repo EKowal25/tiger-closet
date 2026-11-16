@@ -9,6 +9,9 @@
   <div class="info">
     <h1><%= dress.title %></h1>
     <p class="muted">Size <%= dress.size %><%= dress.length ? ' · ' + dress.length : '' %><%= dress.color ? ' · ' + dress.color : '' %><%= dress.designer ? ' · ' + dress.designer : '' %></p>
+    <% if (dress.events && dress.events.length) { %>
+      <p class="bestfor">Best for: <% dress.events.forEach(ev => { %><a class="eventtag" href="/browse?event=<%= encodeURIComponent(ev) %>"><%= ev %></a><% }) %></p>
+    <% } %>
     <% if (dress.condition && CONDITIONS[dress.condition]) { %>
       <p class="valueline"><span>Condition: <strong><%= CONDITIONS[dress.condition].label %></strong></span>
         <% if (dress.retail_price) { %><span><%= dress.retail_estimated ? 'Est. retail' : 'Retail' %>: <strong>$<%= dress.retail_price %></strong></span><% } %></p>

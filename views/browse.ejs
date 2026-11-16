@@ -6,6 +6,7 @@
 <form class="filters" method="get">
   <input name="q" value="<%= filters.q %>" placeholder="Search color, designer, style…">
   <select name="size"><option value="">Any size</option><% SIZES.forEach(s => { %><option <%= filters.size === s ? 'selected' : '' %>><%= s %></option><% }) %></select>
+  <select name="event"><option value="">Any event</option><% EVENTS.forEach(ev => { %><option <%= filters.event === ev ? 'selected' : '' %>><%= ev %></option><% }) %></select>
   <select name="length"><option value="">Any length</option><% LENGTHS.forEach(l => { %><option <%= filters.length === l ? 'selected' : '' %>><%= l %></option><% }) %></select>
   <select name="terms">
     <option value="">Any terms</option>
@@ -28,6 +29,7 @@
       <div class="meta">
         <strong><%= d.title %></strong>
         <span class="muted">Size <%= d.size %><%= d.length ? ' · ' + d.length : '' %><%= d.color ? ' · ' + d.color : '' %></span>
+        <% if (d.events && d.events.length) { %><span class="muted events"><%= d.events.slice(0, 2).join(' · ') %><%= d.events.length > 2 ? ' +' + (d.events.length - 2) : '' %></span><% } %>
         <span class="tags">
           <% if (d.allow_deposit) { %><i>Deposit<%= d.min_deposit ? ' $' + d.min_deposit + '+' : '' %></i><% } %>
           <% if (d.allow_fee) { %><i>Rent<%= d.rental_fee ? ' $' + d.rental_fee : '' %></i><% } %>
