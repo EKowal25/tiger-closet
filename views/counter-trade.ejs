@@ -1,0 +1,22 @@
+<%- include('partials/header') %>
+<section class="card" style="max-width: 860px; margin: 32px auto;">
+  <h1>Counter offer</h1>
+  <p><strong><%= t.offerer_name %></strong> offered a trade for your <a href="/dresses/<%= t.dress_id %>"><%= t.dress_title %></a>.
+     Pick the dress(es) from their closet you'd rather have. The ones they offered are already selected.</p>
+  <form method="post" action="/trades/<%= t.id %>/counter" class="stack">
+    <input type="hidden" name="_csrf" value="<%= csrf %>">
+    <div class="pick-grid">
+      <% theirDresses.forEach(d => { %>
+        <label class="pick">
+          <input type="checkbox" name="dress_ids" value="<%= d.id %>" <%= offered.includes(d.id) ? 'checked' : '' %>>
+          <% if (d.photos[0]) { %><img src="<%= photoUrl(d.photos[0]) %>" alt=""><% } %>
+          <span><%= d.title %><br><small class="was">Size <%= d.size %><%= offered.includes(d.id) ? ' · in their offer' : '' %></small></span>
+        </label>
+      <% }) %>
+    </div>
+    <label>Note to them <textarea name="message" rows="2" maxlength="1000" placeholder="e.g. I'd love your red midi instead!"></textarea></label>
+    <button class="btn big">Send counter offer</button>
+    <a class="links" href="/closet#trades-received">Cancel</a>
+  </form>
+</section>
+<%- include('partials/footer') %>

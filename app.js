@@ -220,7 +220,7 @@ app.post('/dresses/:id/edit', requireAuth, checkCsrf, async (req, res) => {
      f.allow_dryclean, f.allow_swap, f.open_to_trade, f.allow_free, f.allow_fee, f.rental_fee, id, req.user.id]);
   if (!d) return res.sendStatus(404);
   if (!f.open_to_trade) {
-    await db.all(`UPDATE trades SET status = 'declined', updated_at = now() WHERE dress_id = $1 AND status = 'pending'`, [id]);
+    await db.all(`UPDATE trades SET status = 'declined', updated_at = now() WHERE dress_id = $1 AND status IN ('pending','countered')`, [id]);
   }
   flash(req, 'Listing updated.');
   res.redirect(`/dresses/${id}`);
@@ -265,8 +265,8 @@ app.get('/dresses/:id', requireAuth, async (req, res) => {
   await attachPhotos([dress]);
   const isOwner = dress.owner_id === req.user.id;
   const myDresses = await db.all('SELECT id, title FROM dresses WHERE owner_id = $1 AND active AND id != $2', [req.user.id, dress.id]);
-  const myRequest = await db.one(`SELECT * FROM requests WHERE dress_id = $1 AND borrower_id = $2 AND status IN ('pending','accepted') ORDER BY id DESC LIMIT 1`, [dress.id, req.user.id]);
-  const myTrade = await db.one(`SELECT * FROM trades WHERE dress_id = $1 AND offerer_id = $2 AND status IN ('pending','accepted') ORDER BY id DESC LIMIT 1`, [dress.id, req.user.id]);
+  const myRequest = await db.one(`SELECT * FROM requests WHERE dress_id = $1 AND borrower_id = $2 AND status IN ('pending','countered','accepted') ORDER BY id DESC LIMIT 1`, [dress.id, req.user.id]);
+  const myTrade = await db.one(`SELECT * FROM trades WHERE dress_id = $1 AND offerer_id = $2 AND status IN ('pending','countered','accepted') ORDER BY id DESC LIMIT 1`, [dress.id, req.user.id]);
   const tradeOffers = isOwner ? (await db.one(`SELECT count(*)::int AS n FROM trades WHERE dress_id = $1 AND status = 'pending'`, [dress.id])).n : 0;
   res.render('dress', { title: dress.title, dress, isOwner, myDresses, myRequest, myTrade, tradeOffers, offer: req.query.offer || '' });
 });
@@ -277,7 +277,7 @@ app.post('/dresses/:id/delete', requireAuth, checkCsrf, async (req, res) => {
   if (!dress) return res.sendStatus(404);
   const photos = await db.all('SELECT key FROM photos WHERE dress_id = $1', [dress.id]);
   await db.all(`UPDATE trades SET status = 'cancelled', updated_at = now()
-                WHERE status IN ('pending','accepted') AND id IN (SELECT trade_id FROM trade_items WHERE dress_id = $1)`, [dress.id]);
+                WHERE status IN ('pending','countered','accepted') AND id IN (SELECT trade_id FROM trade_items WHERE dress_id = $1)`, [dress.id]);
   await db.all('DELETE FROM dresses WHERE id = $1', [dress.id]);
   await storage.remove(photos.map((p) => p.key));
   flash(req, 'Listing removed.');
@@ -343,6 +343,57 @@ app.post('/dresses/:id/request', requireAuth, checkCsrf, async (req, res) => {
   res.redirect('/closet#sent');
 });
 
+// ----- counter offers on borrow requests (owner proposes different terms) -----
+async function loadRequestForOwner(req) {
+  const r = await db.one(`SELECT r.*, d.owner_id, d.title AS dress_title, d.min_deposit, d.rental_fee, d.allow_fee,
+                                 b.name AS borrower_name, sd.title AS swap_title
+                          FROM requests r JOIN dresses d ON d.id = r.dress_id JOIN users b ON b.id = r.borrower_id
+                          LEFT JOIN dresses sd ON sd.id = r.swap_dress_id WHERE r.id = $1`, [toInt(req.params.id)]);
+  return r && r.owner_id === req.user.id ? r : null;
+}
+
+app.get('/requests/:id/counter', requireAuth, async (req, res) => {
+  const r = await loadRequestForOwner(req);
+  if (!r || r.status !== 'pending') return res.status(404).render('error', { title: 'Not found', message: 'That request can no longer be countered.' });
+  const theirDresses = await db.all('SELECT id, title FROM dresses WHERE owner_id = $1 AND active ORDER BY created_at DESC', [r.borrower_id]);
+  res.render('counter-request', { title: 'Counter offer', r, theirDresses });
+});
+
+app.post('/requests/:id/counter', requireAuth, checkCsrf, async (req, res) => {
+  const r = await loadRequestForOwner(req);
+  if (!r || r.status !== 'pending') return res.sendStatus(404);
+  const b = req.body;
+  const fail = (msg) => { flash(req, msg, 'err'); res.redirect(`/requests/${r.id}/counter`); };
+  const dateRe = /^\d{4}-\d{2}-\d{2}$/;
+  const pickup = clean(b.pickup_date, 10), ret = clean(b.return_date, 10);
+  if (!dateRe.test(pickup) || !dateRe.test(ret) || ret < pickup) return fail('Please enter valid pickup and return dates.');
+  const c = {
+    pickup_date: pickup, return_date: ret,
+    offer_deposit: !!b.offer_deposit, offer_fee: !!b.offer_fee, offer_dryclean: !!b.offer_dryclean,
+    offer_free: !!b.offer_free, offer_swap: !!b.offer_swap,
+    deposit_amount: null, fee_amount: null, swap_dress_id: null, swap_title: null,
+    message: clean(b.message, 1000),
+  };
+  if (!c.offer_deposit && !c.offer_fee && !c.offer_dryclean && !c.offer_free && !c.offer_swap) return fail('Choose at least one term for your counter offer.');
+  if (c.offer_free && c.offer_fee) return fail('Pick either "free" or a rental fee, not both.');
+  const amount = (v) => { const n = toInt(v); return n !== null && n >= 0 && n <= 5000 ? n : null; };
+  if (c.offer_deposit && (c.deposit_amount = amount(b.deposit_amount)) === null) return fail('Enter a deposit amount between $0 and $5000.');
+  if (c.offer_fee && !(c.fee_amount = amount(b.fee_amount))) return fail('Enter a rental fee between $1 and $5000.');
+  if (c.offer_swap) {
+    const sd = await db.one('SELECT id, title FROM dresses WHERE id = $1 AND owner_id = $2 AND active', [toInt(b.swap_dress_id), r.borrower_id]);
+    if (!sd) return fail('Pick one of their dresses for the swap.');
+    c.swap_dress_id = sd.id; c.swap_title = sd.title;
+  }
+  await db.all(`UPDATE requests SET status = 'countered', counter = $1, updated_at = now() WHERE id = $2`, [c, r.id]);
+  await notify(r.borrower_id, {
+    subject: `Counter offer for ${r.dress_title}`,
+    lines: [`${who(req.user)} sent you a counter offer for ${r.dress_title}.`, 'Take a look and accept it or decline.'],
+    link: '/closet#sent', button: 'See counter offer',
+  });
+  flash(req, 'Counter offer sent! They can accept it or decline.');
+  res.redirect('/closet#received');
+});
+
 app.post('/requests/:id/:action', requireAuth, checkCsrf, async (req, res) => {
   const r = await db.one(`SELECT r.*, d.owner_id, d.title AS dress_title FROM requests r JOIN dresses d ON d.id = r.dress_id WHERE r.id = $1`, [toInt(req.params.id)]);
   if (!r) return res.sendStatus(404);
@@ -365,11 +416,41 @@ app.post('/requests/:id/:action', requireAuth, checkCsrf, async (req, res) => {
     return res.redirect(back);
   }
 
+  // Counter offers: the owner can withdraw theirs; the borrower can accept or decline it.
+  if (action === 'withdraw') {
+    if (!isOwner || r.status !== 'countered') return res.sendStatus(400);
+    await db.all(`UPDATE requests SET status = 'pending', counter = NULL, updated_at = now() WHERE id = $1`, [r.id]);
+    return res.redirect(back);
+  }
+  if (action === 'accept-counter') {
+    if (!isBorrower || r.status !== 'countered' || !r.counter) return res.sendStatus(400);
+    const c = r.counter;
+    if (c.offer_swap) {
+      const still = await db.one('SELECT id FROM dresses WHERE id = $1 AND owner_id = $2 AND active', [c.swap_dress_id, req.user.id]);
+      if (!still) { flash(req, 'The dress in this counter offer is no longer in your closet.', 'err'); return res.redirect(back); }
+    }
+    await db.all(`UPDATE requests SET status = 'accepted', updated_at = now(),
+                    pickup_date = $2, return_date = $3, offer_deposit = $4, deposit_amount = $5, offer_fee = $6, fee_amount = $7,
+                    offer_dryclean = $8, offer_free = $9, offer_swap = $10, swap_dress_id = $11
+                  WHERE id = $1`,
+      [r.id, c.pickup_date, c.return_date, c.offer_deposit, c.deposit_amount, c.offer_fee, c.fee_amount,
+       c.offer_dryclean, c.offer_free, c.offer_swap, c.swap_dress_id]);
+    await notify(r.owner_id, { subject: `Counter accepted: ${r.dress_title}`, lines: [`${who(req.user)} accepted your counter offer for ${r.dress_title}!`, 'Their contact info is in your closet so you can arrange pickup.'], link: '/closet#received', button: 'See contact info' });
+    flash(req, 'Counter offer accepted! Contact info is below so you can arrange pickup.');
+    return res.redirect(back);
+  }
+  if (action === 'decline-counter') {
+    if (!isBorrower || r.status !== 'countered') return res.sendStatus(400);
+    await db.all(`UPDATE requests SET status = 'declined', updated_at = now() WHERE id = $1`, [r.id]);
+    await notify(r.owner_id, { subject: `Counter declined: ${r.dress_title}`, lines: [`${who(req.user)} declined your counter offer for ${r.dress_title}.`], link: '/closet#received' });
+    return res.redirect(back);
+  }
+
   const transitions = {
     accept:   { who: isOwner,                         from: ['pending'],             to: 'accepted' },
     decline:  { who: isOwner,                         from: ['pending'],             to: 'declined' },
     returned: { who: isOwner && !r.offer_swap,        from: ['accepted'],            to: 'returned' },
-    cancel:   { who: isBorrower,                      from: ['pending', 'accepted'], to: 'cancelled' },
+    cancel:   { who: isBorrower,                      from: ['pending', 'countered', 'accepted'], to: 'cancelled' },
   };
   const t = transitions[action];
   if (!t || !t.who || !t.from.includes(r.status)) return res.sendStatus(400);
@@ -399,7 +480,7 @@ app.post('/dresses/:id/trade', requireAuth, checkCsrf, async (req, res) => {
   if (!ids.length) return fail('Pick at least one of your dresses to offer.');
   const mine = await db.all('SELECT id FROM dresses WHERE id = ANY($1) AND owner_id = $2 AND active', [ids, req.user.id]);
   if (mine.length !== ids.length) return fail('You can only offer dresses you have posted.');
-  const open = await db.one(`SELECT id FROM trades WHERE dress_id = $1 AND offerer_id = $2 AND status IN ('pending','accepted')`, [dress.id, req.user.id]);
+  const open = await db.one(`SELECT id FROM trades WHERE dress_id = $1 AND offerer_id = $2 AND status IN ('pending','countered','accepted')`, [dress.id, req.user.id]);
   if (open) return fail('You already have an open trade offer for this dress.');
 
   await db.tx(async (q) => {
@@ -414,6 +495,40 @@ app.post('/dresses/:id/trade', requireAuth, checkCsrf, async (req, res) => {
   });
   flash(req, 'Trade offer sent! If it\u2019s accepted, you\u2019ll both see each other\u2019s contact info to meet up.');
   res.redirect('/closet#trades-sent');
+});
+
+// ----- counter offers on trades (owner asks for different dresses from the offerer's closet) -----
+async function loadTradeForOwner(req) {
+  const t = await db.one(`SELECT t.*, d.title AS dress_title, f.name AS offerer_name FROM trades t
+                          JOIN dresses d ON d.id = t.dress_id JOIN users f ON f.id = t.offerer_id WHERE t.id = $1`, [toInt(req.params.id)]);
+  return t && t.owner_id === req.user.id ? t : null;
+}
+
+app.get('/trades/:id/counter', requireAuth, async (req, res) => {
+  const t = await loadTradeForOwner(req);
+  if (!t || t.status !== 'pending') return res.status(404).render('error', { title: 'Not found', message: 'That trade offer can no longer be countered.' });
+  const theirDresses = await attachPhotos(await db.all('SELECT * FROM dresses WHERE owner_id = $1 AND active ORDER BY created_at DESC', [t.offerer_id]));
+  const offered = (await db.all('SELECT dress_id FROM trade_items WHERE trade_id = $1', [t.id])).map((i) => i.dress_id);
+  res.render('counter-trade', { title: 'Counter offer', t, theirDresses, offered });
+});
+
+app.post('/trades/:id/counter', requireAuth, checkCsrf, async (req, res) => {
+  const t = await loadTradeForOwner(req);
+  if (!t || t.status !== 'pending') return res.sendStatus(404);
+  const fail = (msg) => { flash(req, msg, 'err'); res.redirect(`/trades/${t.id}/counter`); };
+  const ids = [...new Set(asList(req.body.dress_ids).map(toInt).filter(Boolean))].slice(0, 5);
+  if (!ids.length) return fail('Pick at least one of their dresses.');
+  const theirs = await db.all('SELECT id FROM dresses WHERE id = ANY($1) AND owner_id = $2 AND active', [ids, t.offerer_id]);
+  if (theirs.length !== ids.length) return fail('You can only ask for dresses in their closet.');
+  await db.all(`UPDATE trades SET status = 'countered', counter = $1, updated_at = now() WHERE id = $2`,
+    [{ dress_ids: ids, message: clean(req.body.message, 1000) }, t.id]);
+  await notify(t.offerer_id, {
+    subject: `Counter offer for ${t.dress_title}`,
+    lines: [`${who(req.user)} sent a counter offer for your trade on ${t.dress_title}: they'd like different dresses from your closet.`, 'Take a look and accept it or decline.'],
+    link: '/closet#trades-sent', button: 'See counter offer',
+  });
+  flash(req, 'Counter offer sent! They can accept it or decline.');
+  res.redirect('/closet#trades-received');
 });
 
 app.post('/trades/:id/:action', requireAuth, checkCsrf, async (req, res) => {
@@ -432,17 +547,38 @@ app.post('/trades/:id/:action', requireAuth, checkCsrf, async (req, res) => {
     return target && target.owner_id === t.owner_id && items.length > 0 && items.every((d) => d.owner_id === t.offerer_id);
   };
 
-  if (action === 'accept' && isOwner && t.status === 'pending') {
+  if (action === 'withdraw' && isOwner && t.status === 'countered') {
+    await db.all(`UPDATE trades SET status = 'pending', counter = NULL, updated_at = now() WHERE id = $1`, [t.id]);
+  } else if (action === 'accept-counter' && isOfferer && t.status === 'countered' && t.counter) {
+    const ids = t.counter.dress_ids || [];
+    const ok = await db.tx(async (q) => {
+      const mine = await q('SELECT id FROM dresses WHERE id = ANY($1) AND owner_id = $2 AND active', [ids, t.offerer_id]);
+      const [target] = await q('SELECT owner_id FROM dresses WHERE id = $1', [t.dress_id]);
+      if (!ids.length || mine.length !== ids.length || !target || target.owner_id !== t.owner_id) return false;
+      await q('DELETE FROM trade_items WHERE trade_id = $1', [t.id]);
+      await q('INSERT INTO trade_items (trade_id, dress_id) SELECT $1, unnest($2::int[])', [t.id, ids]);
+      await q(`UPDATE trades SET status = 'accepted', updated_at = now() WHERE id = $1`, [t.id]);
+      return true;
+    });
+    if (!ok) return fail('One of the dresses in this counter offer is no longer available.');
+    const others = await db.all(`UPDATE trades SET status = 'declined', updated_at = now() WHERE dress_id = $1 AND status IN ('pending','countered') AND id != $2 RETURNING offerer_id`, [t.dress_id, t.id]);
+    await notify(t.owner_id, { subject: `Counter accepted: ${t.dress_title}`, lines: [`${who(req.user)} accepted your counter offer for ${t.dress_title}!`, 'Their contact info is in your closet. Meet up to exchange dresses, then both tap “We’ve swapped”.'], link: '/closet#trades-received', button: 'See contact info' });
+    for (const o of others) await notify(o.offerer_id, { subject: `Trade offer declined: ${t.dress_title}`, lines: [`${t.dress_title} was traded to someone else, so your offer was declined.`], link: '/swaps', button: 'See what’s up for trade' });
+    flash(req, 'Counter offer accepted! Meet up to exchange dresses, then both tap “We’ve swapped”.');
+  } else if (action === 'decline-counter' && isOfferer && t.status === 'countered') {
+    await db.all(`UPDATE trades SET status = 'declined', updated_at = now() WHERE id = $1`, [t.id]);
+    await notify(t.owner_id, { subject: `Counter declined: ${t.dress_title}`, lines: [`${who(req.user)} declined your counter offer for ${t.dress_title}.`], link: '/closet#trades-received' });
+  } else if (action === 'accept' && isOwner && t.status === 'pending') {
     if (!(await stillValid(db.all))) return fail('One of the dresses in this offer is no longer available.');
     await db.all(`UPDATE trades SET status = 'accepted', updated_at = now() WHERE id = $1`, [t.id]);
-    const others = await db.all(`UPDATE trades SET status = 'declined', updated_at = now() WHERE dress_id = $1 AND status = 'pending' AND id != $2 RETURNING offerer_id`, [t.dress_id, t.id]);
+    const others = await db.all(`UPDATE trades SET status = 'declined', updated_at = now() WHERE dress_id = $1 AND status IN ('pending','countered') AND id != $2 RETURNING offerer_id`, [t.dress_id, t.id]);
     await notify(t.offerer_id, { subject: `Trade accepted: ${t.dress_title}`, lines: [`${who(req.user)} accepted your trade offer for ${t.dress_title}!`, 'Their contact info is in your closet. Meet up to exchange dresses, then both tap “We’ve swapped”.'], link: '/closet#trades-sent', button: 'See contact info' });
     for (const o of others) await notify(o.offerer_id, { subject: `Trade offer declined: ${t.dress_title}`, lines: [`${t.dress_title} was traded to someone else, so your offer was declined.`], link: '/swaps', button: 'See what’s up for trade' });
     flash(req, 'Trade accepted! Meet up to exchange dresses, then both of you tap \u201cWe\u2019ve swapped\u201d.');
   } else if (action === 'decline' && isOwner && t.status === 'pending') {
     await db.all(`UPDATE trades SET status = 'declined', updated_at = now() WHERE id = $1`, [t.id]);
     await notify(t.offerer_id, { subject: `Trade offer declined: ${t.dress_title}`, lines: [`${who(req.user)} declined your trade offer for ${t.dress_title}.`], link: '/swaps', button: 'See what’s up for trade' });
-  } else if (action === 'cancel' && (isOfferer ? ['pending', 'accepted'] : ['accepted']).includes(t.status)) {
+  } else if (action === 'cancel' && (isOfferer ? ['pending', 'countered', 'accepted'] : ['accepted']).includes(t.status)) {
     await db.all(`UPDATE trades SET status = 'cancelled', updated_at = now() WHERE id = $1`, [t.id]);
     await notify(isOwner ? t.offerer_id : t.owner_id, { subject: `Trade called off: ${t.dress_title}`, lines: [`${who(req.user)} called off the trade for ${t.dress_title}.`], link: isOwner ? '/closet#trades-sent' : '/closet#trades-received' });
   } else if (action === 'confirm' && t.status === 'accepted') {
@@ -459,9 +595,9 @@ app.post('/trades/:id/:action', requireAuth, checkCsrf, async (req, res) => {
       await q(`UPDATE trades SET status = 'completed', updated_at = now() WHERE id = $1`, [t.id]);
       // Other open offers and borrow requests involving these dresses no longer make sense.
       await q(`UPDATE trades SET status = 'cancelled', updated_at = now()
-               WHERE status IN ('pending','accepted') AND id != $1
+               WHERE status IN ('pending','countered','accepted') AND id != $1
                  AND (dress_id = ANY($2) OR id IN (SELECT trade_id FROM trade_items WHERE dress_id = ANY($2)))`, [t.id, moved]);
-      await q(`UPDATE requests SET status = 'cancelled', updated_at = now() WHERE status = 'pending' AND dress_id = ANY($1)`, [moved]);
+      await q(`UPDATE requests SET status = 'cancelled', updated_at = now() WHERE status IN ('pending','countered') AND dress_id = ANY($1)`, [moved]);
       return true;
     }).catch((e) => { if (e.message === 'trade no longer valid') return 'invalid'; throw e; });
     if (done === 'invalid') return fail('One of the dresses in this trade is no longer available.');
@@ -499,7 +635,7 @@ app.get('/closet', requireAuth, async (req, res) => {
     JOIN users o ON o.id = d.owner_id
     JOIN users b ON b.id = r.borrower_id
     LEFT JOIN dresses sd ON sd.id = r.swap_dress_id`;
-  const received = await db.all(`${base} WHERE d.owner_id = $1 ORDER BY (r.status = 'pending') DESC, r.created_at DESC`, [req.user.id]);
+  const received = await db.all(`${base} WHERE d.owner_id = $1 ORDER BY (r.status IN ('pending','countered')) DESC, r.created_at DESC`, [req.user.id]);
   const sent = await db.all(`${base} WHERE r.borrower_id = $1 ORDER BY r.created_at DESC`, [req.user.id]);
 
   const trades = await db.all(`
@@ -511,11 +647,14 @@ app.get('/closet', requireAuth, async (req, res) => {
     JOIN users o ON o.id = t.owner_id
     JOIN users f ON f.id = t.offerer_id
     WHERE t.owner_id = $1 OR t.offerer_id = $1
-    ORDER BY (t.status IN ('pending','accepted')) DESC, t.created_at DESC`, [req.user.id]);
+    ORDER BY (t.status IN ('pending','countered','accepted')) DESC, t.created_at DESC`, [req.user.id]);
   const items = trades.length ? await db.all(`
     SELECT i.trade_id, d.id, d.title FROM trade_items i JOIN dresses d ON d.id = i.dress_id WHERE i.trade_id = ANY($1)`,
     [trades.map((t) => t.id)]) : [];
   for (const t of trades) t.items = items.filter((i) => i.trade_id === t.id);
+  const counterIds = [...new Set(trades.flatMap((t) => (t.counter && t.counter.dress_ids) || []))];
+  const counterDresses = counterIds.length ? await db.all('SELECT id, title FROM dresses WHERE id = ANY($1)', [counterIds]) : [];
+  for (const t of trades) t.counterItems = ((t.counter && t.counter.dress_ids) || []).map((id) => counterDresses.find((d) => d.id === id) || { id, title: '(no longer listed)' });
   res.render('closet', {
     title: 'My closet', listings, received, sent,
     tradesReceived: trades.filter((t) => t.owner_id === req.user.id),

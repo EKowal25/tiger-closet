@@ -33,7 +33,7 @@
         <section id="trade">
         <% if (myTrade) { %>
           <div class="card soft">
-            <p>You have a <strong><%= myTrade.status %></strong> trade offer for this dress. <a href="/closet#trades-sent">View in My closet</a>.</p>
+            <p>You have a <strong><%= myTrade.status === 'countered' ? 'counter offer waiting on your' : myTrade.status %></strong> trade offer for this dress. <a href="/closet#trades-sent">View in My closet</a>.</p>
           </div>
         <% } else { %>
           <form method="post" action="/dresses/<%= dress.id %>/trade" class="card stack trade-card">
@@ -60,7 +60,7 @@
       <% if (!canBorrow) { %>
       <% } else if (myRequest) { %>
         <div class="card soft">
-          <p>You have a <strong><%= myRequest.status %></strong> request for this dress. <a href="/closet#sent">View in My closet</a>.</p>
+          <p>You have a <strong><%= myRequest.status === 'countered' ? 'counter offer waiting on your' : myRequest.status %></strong> request for this dress. <a href="/closet#sent">View in My closet</a>.</p>
         </div>
       <% } else { %>
         <form method="post" action="/dresses/<%= dress.id %>/request" class="card stack" id="reqForm">

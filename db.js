@@ -115,6 +115,23 @@ CREATE TABLE IF NOT EXISTS trade_items (
   PRIMARY KEY (trade_id, dress_id)
 );
 
+-- Counter offers: the owner proposes different terms (requests) or different dresses (trades).
+ALTER TABLE requests ADD COLUMN IF NOT EXISTS counter JSONB;
+ALTER TABLE trades   ADD COLUMN IF NOT EXISTS counter JSONB;
+-- Allow the 'countered' status (only rebuilt once, when the old rule is still in place).
+DO $$ BEGIN
+  IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'requests_status_check' AND pg_get_constraintdef(oid) LIKE '%countered%') THEN
+    ALTER TABLE requests DROP CONSTRAINT IF EXISTS requests_status_check;
+    ALTER TABLE requests ADD CONSTRAINT requests_status_check
+      CHECK (status IN ('pending','countered','accepted','declined','cancelled','returned'));
+  END IF;
+  IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'trades_status_check' AND pg_get_constraintdef(oid) LIKE '%countered%') THEN
+    ALTER TABLE trades DROP CONSTRAINT IF EXISTS trades_status_check;
+    ALTER TABLE trades ADD CONSTRAINT trades_status_check
+      CHECK (status IN ('pending','countered','accepted','declined','cancelled','completed'));
+  END IF;
+END $$;
+
 CREATE INDEX IF NOT EXISTS idx_trades_dress ON trades(dress_id);
 CREATE INDEX IF NOT EXISTS idx_trades_offerer ON trades(offerer_id);
 CREATE INDEX IF NOT EXISTS idx_trades_owner ON trades(owner_id);
