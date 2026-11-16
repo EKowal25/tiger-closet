@@ -1,5 +1,5 @@
 <%- include('partials/header') %>
-<h1>Reports</h1>
+<div class="pagehead"><h1>Reports</h1><a class="btn ghost" href="/admin">Site activity</a></div>
 <p class="muted">Only admins can see this page. Open reports are listed first.</p>
 <% if (!reports.length) { %><p class="muted">No reports yet.</p><% } %>
 <% reports.forEach(p => { %>
