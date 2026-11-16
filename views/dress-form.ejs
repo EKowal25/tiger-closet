@@ -40,10 +40,10 @@
     <fieldset>
       <legend>Lend it: how can people borrow it?</legend>
       <label class="check"><input type="checkbox" name="allow_deposit" <%= d.allow_deposit ? 'checked' : '' %> id="allowDeposit"> They put down a deposit</label>
-      <label class="indent" id="minDepositWrap" <%= d.allow_deposit ? '' : 'hidden' %>>Minimum deposit ($) <input type="number" name="min_deposit" min="0" max="2000" value="<%= d.min_deposit %>" id="minDeposit">
+      <label class="indent" id="minDepositWrap" <%= d.allow_deposit ? '' : 'hidden' %>>Your deposit ($) <small class="muted suggest">pre-filled from the estimate; change it to any amount you like. Borrowers must offer at least this.</small> <input type="number" name="min_deposit" min="0" max="2000" value="<%= d.min_deposit %>" id="minDeposit">
         <small class="muted suggest" id="depositHint"></small></label>
       <label class="check"><input type="checkbox" name="allow_fee" <%= d.allow_fee ? 'checked' : '' %> id="allowFee"> <span>They pay a rental fee <small class="muted">(kept by you, not returned; can be on top of a deposit)</small></span></label>
-      <label class="indent" id="feeWrap" <%= d.allow_fee ? '' : 'hidden' %>>Your rental price ($) <input type="number" name="rental_fee" min="0" max="2000" value="<%= d.rental_fee || 20 %>" id="rentalFee">
+      <label class="indent" id="feeWrap" <%= d.allow_fee ? '' : 'hidden' %>>Your rental price ($) <small class="muted suggest">pre-filled from the estimate; set your own price.</small> <input type="number" name="rental_fee" min="0" max="2000" value="<%= d.rental_fee || 20 %>" id="rentalFee">
         <small class="muted suggest" id="rentalHint"></small></label>
       <label class="check"><input type="checkbox" name="allow_dryclean" <%= d.allow_dryclean ? 'checked' : '' %>> They agree to dry clean it before returning</label>
       <label class="check"><input type="checkbox" name="allow_free" <%= d.allow_free ? 'checked' : '' %>> <span>Free <small class="muted">(e.g. for friends; you decide who when you accept)</small></span></label>
@@ -84,7 +84,7 @@
            <div class="est-row hi"><span>Suggested deposit</span><strong>${money(e.deposit)}</strong></div>
            <div class="est-row hi"><span>Suggested rental price</span><strong>${money(e.rental)}</strong></div>
            <small class="muted">${e.retailEstimated ? 'Based on: ' + e.reasons.join(' · ') + '. Enter the original price above if you know it.' : 'Based on the original price you entered.'}
-           The deposit is about half of what the dress is worth now; rental is about 15%. You can change both below.</small>`
+           The deposit is about half of what the dress is worth now; rental is about 15%. These are just suggestions: you can edit both below.</small>`
         : '<small class="muted">Pick the condition to see an estimated value, a suggested deposit and a rental price.</small>';
       if (!cond) return;
       if (!depTouched) dep.value = e.deposit;
