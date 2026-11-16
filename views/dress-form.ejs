@@ -1,6 +1,6 @@
 <%- include('partials/header') %>
 <%
-  const d = dress || { allow_deposit: true, min_deposit: 50, allow_dryclean: true, allow_swap: false, open_to_trade: false };
+  const d = dress || { allow_deposit: true, min_deposit: 50, allow_dryclean: true, allow_swap: false, open_to_trade: false, allow_free: false, allow_fee: false, rental_fee: 20 };
   const editing = !!dress;
   const v = (k) => (d[k] == null ? '' : d[k]);
 %>
@@ -27,7 +27,10 @@
       <legend>Lend it: how can people borrow it?</legend>
       <label class="check"><input type="checkbox" name="allow_deposit" <%= d.allow_deposit ? 'checked' : '' %> id="allowDeposit"> They put down a deposit</label>
       <label class="indent" id="minDepositWrap" <%= d.allow_deposit ? '' : 'hidden' %>>Minimum deposit ($) <input type="number" name="min_deposit" min="0" max="2000" value="<%= d.min_deposit %>"></label>
+      <label class="check"><input type="checkbox" name="allow_fee" <%= d.allow_fee ? 'checked' : '' %> id="allowFee"> <span>They pay a rental fee <small class="muted">(kept by you, not returned; can be on top of a deposit)</small></span></label>
+      <label class="indent" id="feeWrap" <%= d.allow_fee ? '' : 'hidden' %>>Rental fee ($) <input type="number" name="rental_fee" min="0" max="2000" value="<%= d.rental_fee || 20 %>"></label>
       <label class="check"><input type="checkbox" name="allow_dryclean" <%= d.allow_dryclean ? 'checked' : '' %>> They agree to dry clean it before returning</label>
+      <label class="check"><input type="checkbox" name="allow_free" <%= d.allow_free ? 'checked' : '' %>> <span>Free <small class="muted">(e.g. for friends; you decide who when you accept)</small></span></label>
       <label class="check"><input type="checkbox" name="allow_swap" <%= d.allow_swap ? 'checked' : '' %>> <span>Temporary swap: we lend each other a dress, then give them back</span></label>
     </fieldset>
     <fieldset>
@@ -45,6 +48,8 @@
   const btn = document.getElementById('submitBtn'), errBox = document.getElementById('formErr');
   const dep = document.getElementById('allowDeposit'), wrap = document.getElementById('minDepositWrap');
   dep.addEventListener('change', () => wrap.hidden = !dep.checked);
+  const feeBox = document.getElementById('allowFee'), feeWrap = document.getElementById('feeWrap');
+  feeBox.addEventListener('change', () => feeWrap.hidden = !feeBox.checked);
   if (input) input.addEventListener('change', () => {
     preview.innerHTML = '';
     [...input.files].slice(0, 6).forEach(f => { const i = new Image(); i.src = URL.createObjectURL(f); preview.appendChild(i); });

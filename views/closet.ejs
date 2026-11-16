@@ -1,7 +1,9 @@
 <%- include('partials/header') %>
 <%
   const termsText = r => [
-    r.offer_deposit ? `$${r.deposit_amount} deposit` : null,
+    r.offer_free ? 'free (they know each other)' : null,
+    r.offer_fee ? `$${r.fee_amount} rental fee` : null,
+    r.offer_deposit ? `$${r.deposit_amount} refundable deposit` : null,
     r.offer_dryclean ? 'will dry clean before returning' : null,
     r.offer_swap ? `swap for "${r.swap_title || 'a dress'}"` : null,
   ].filter(Boolean).join(' + ').replace(/^./, c => c.toUpperCase());

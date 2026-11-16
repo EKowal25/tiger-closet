@@ -156,6 +156,8 @@ app.get('/browse', requireAuth, async (req, res) => {
   if (filters.length) where.push(`d.length = ${add(filters.length)}`);
   if (filters.terms === 'deposit') where.push('d.allow_deposit');
   if (filters.terms === 'dryclean') where.push('d.allow_dryclean');
+  if (filters.terms === 'free') where.push('d.allow_free');
+  if (filters.terms === 'fee') where.push('d.allow_fee');
   if (filters.terms === 'swap') where.push('d.allow_swap');
   if (filters.terms === 'trade') where.push('d.open_to_trade');
   const dresses = await attachPhotos(await db.all(`
@@ -175,14 +177,17 @@ function readListing(b) {
     description: clean(b.description, 2000),
     allow_deposit: !!b.allow_deposit,
     allow_dryclean: !!b.allow_dryclean,
+    allow_free: !!b.allow_free,
+    allow_fee: !!b.allow_fee,
     allow_swap: !!b.allow_swap,
     open_to_trade: !!b.open_to_trade,
   };
   f.min_deposit = f.allow_deposit ? Math.max(0, Math.min(2000, toInt(b.min_deposit) || 0)) : 0;
+  f.rental_fee = f.allow_fee ? Math.max(0, Math.min(2000, toInt(b.rental_fee) || 0)) : 0;
   const errors = [];
   if (!f.title) errors.push('Give your dress a title.');
   if (!f.size) errors.push('Pick a size.');
-  if (!f.allow_deposit && !f.allow_dryclean && !f.allow_swap && !f.open_to_trade) {
+  if (!f.allow_deposit && !f.allow_dryclean && !f.allow_swap && !f.allow_free && !f.allow_fee && !f.open_to_trade) {
     errors.push('Choose at least one way people can borrow or trade for it.');
   }
   return { f, errors };
@@ -204,10 +209,11 @@ app.post('/dresses/:id/edit', requireAuth, checkCsrf, async (req, res) => {
   if (errors.length) { flash(req, errors.join(' '), 'err'); return res.redirect(`/dresses/${id}/edit`); }
   const d = await db.one(`
     UPDATE dresses SET title = $1, designer = $2, size = $3, color = $4, length = $5, description = $6,
-      allow_deposit = $7, min_deposit = $8, allow_dryclean = $9, allow_swap = $10, open_to_trade = $11
-    WHERE id = $12 AND owner_id = $13 RETURNING id`,
+      allow_deposit = $7, min_deposit = $8, allow_dryclean = $9, allow_swap = $10, open_to_trade = $11,
+      allow_free = $12, allow_fee = $13, rental_fee = $14
+    WHERE id = $15 AND owner_id = $16 RETURNING id`,
     [f.title, f.designer, f.size, f.color, f.length, f.description, f.allow_deposit, f.min_deposit,
-     f.allow_dryclean, f.allow_swap, f.open_to_trade, id, req.user.id]);
+     f.allow_dryclean, f.allow_swap, f.open_to_trade, f.allow_free, f.allow_fee, f.rental_fee, id, req.user.id]);
   if (!d) return res.sendStatus(404);
   if (!f.open_to_trade) {
     await db.all(`UPDATE trades SET status = 'declined', updated_at = now() WHERE dress_id = $1 AND status = 'pending'`, [id]);
@@ -229,10 +235,12 @@ app.post('/dresses', requireAuth, upload.array('photos', 6), checkCsrf, async (r
   try {
     const d = await db.one(`
       INSERT INTO dresses (owner_id, title, designer, size, color, length, description,
-                           allow_deposit, min_deposit, allow_dryclean, allow_swap, open_to_trade)
-      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12) RETURNING id`, [
+                           allow_deposit, min_deposit, allow_dryclean, allow_swap, open_to_trade,
+                           allow_free, allow_fee, rental_fee)
+      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15) RETURNING id`, [
       req.user.id, f.title, f.designer, f.size, f.color, f.length, f.description,
-      f.allow_deposit, f.min_deposit, f.allow_dryclean, f.allow_swap, f.open_to_trade]);
+      f.allow_deposit, f.min_deposit, f.allow_dryclean, f.allow_swap, f.open_to_trade,
+      f.allow_free, f.allow_fee, f.rental_fee]);
     await db.all(`INSERT INTO photos (dress_id, key, position) SELECT $1, k, i - 1 FROM unnest($2::text[]) WITH ORDINALITY AS t(k, i)`, [d.id, keys]);
     flash(req, 'Your dress is posted!');
     go(req, res, `/dresses/${d.id}`);
@@ -291,9 +299,18 @@ app.post('/dresses/:id/request', requireAuth, checkCsrf, async (req, res) => {
   if (!dateRe.test(pickup) || !dateRe.test(ret) || ret < pickup) return fail('Please enter valid pickup and return dates.');
 
   // Borrowers can combine terms. Swap is always allowed as an offer; the owner decides when accepting.
-  const offer = { deposit: !!b.offer_deposit, dryclean: !!b.offer_dryclean, swap: !!b.offer_swap };
-  if (!offer.deposit && !offer.dryclean && !offer.swap) return fail('Choose at least one of your terms: deposit, dry clean or swap.');
-  let deposit = null, swapId = null;
+  const offer = {
+    deposit: !!b.offer_deposit, dryclean: !!b.offer_dryclean, swap: !!b.offer_swap,
+    free: !!b.offer_free, fee: !!b.offer_fee,
+  };
+  if (!Object.values(offer).some(Boolean)) return fail('Choose at least one of your terms.');
+  if (offer.free && offer.fee) return fail('Pick either "free" or a rental fee, not both.');
+  let deposit = null, swapId = null, fee = null;
+  if (offer.fee) {
+    fee = toInt(b.fee_amount);
+    const minFee = dress.allow_fee ? dress.rental_fee : 1;
+    if (fee === null || fee < minFee || fee > 5000) return fail(`Please enter a rental fee of at least $${minFee}.`);
+  }
   if (offer.deposit) {
     deposit = toInt(b.deposit_amount);
     if (deposit === null || deposit < dress.min_deposit || deposit > 5000) {
@@ -308,9 +325,11 @@ app.post('/dresses/:id/request', requireAuth, checkCsrf, async (req, res) => {
   }
 
   await db.all(`INSERT INTO requests (dress_id, borrower_id, event_name, pickup_date, return_date,
-                  offer_deposit, offer_dryclean, offer_swap, deposit_amount, swap_dress_id, message)
-                VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)`,
-    [dress.id, req.user.id, clean(b.event_name, 80), pickup, ret, offer.deposit, offer.dryclean, offer.swap, deposit, swapId, clean(b.message, 1000)]);
+                  offer_deposit, offer_dryclean, offer_swap, offer_free, offer_fee,
+                  deposit_amount, fee_amount, swap_dress_id, message)
+                VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)`,
+    [dress.id, req.user.id, clean(b.event_name, 80), pickup, ret, offer.deposit, offer.dryclean, offer.swap,
+     offer.free, offer.fee, deposit, fee, swapId, clean(b.message, 1000)]);
   flash(req, 'Request sent! You will see the owner’s contact info here once your request is accepted.');
   res.redirect('/closet#sent');
 });

@@ -82,6 +82,13 @@ ALTER TABLE requests ALTER COLUMN terms DROP NOT NULL;
 ALTER TABLE requests DROP CONSTRAINT IF EXISTS requests_terms_check;
 UPDATE requests SET offer_deposit = (terms = 'deposit'), offer_dryclean = (terms = 'dryclean'), offer_swap = (terms = 'swap'), terms = NULL
   WHERE terms IS NOT NULL;
+-- Free loans (e.g. between friends) and non-refundable rental fees.
+ALTER TABLE dresses  ADD COLUMN IF NOT EXISTS allow_free  BOOLEAN NOT NULL DEFAULT false;
+ALTER TABLE dresses  ADD COLUMN IF NOT EXISTS allow_fee   BOOLEAN NOT NULL DEFAULT false;
+ALTER TABLE dresses  ADD COLUMN IF NOT EXISTS rental_fee  INTEGER NOT NULL DEFAULT 0;
+ALTER TABLE requests ADD COLUMN IF NOT EXISTS offer_free  BOOLEAN NOT NULL DEFAULT false;
+ALTER TABLE requests ADD COLUMN IF NOT EXISTS offer_fee   BOOLEAN NOT NULL DEFAULT false;
+ALTER TABLE requests ADD COLUMN IF NOT EXISTS fee_amount  INTEGER;
 ALTER TABLE requests ADD COLUMN IF NOT EXISTS owner_got_back    BOOLEAN NOT NULL DEFAULT false;
 ALTER TABLE requests ADD COLUMN IF NOT EXISTS borrower_got_back BOOLEAN NOT NULL DEFAULT false;
 

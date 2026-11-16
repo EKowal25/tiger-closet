@@ -175,6 +175,7 @@ a.tile:hover { transform: translate(-3px, -3px) rotate(-.6deg); box-shadow: var(
 .tags i:nth-child(2) { background: var(--sky); color: #111; }
 .tags i:nth-child(3) { background: var(--pink); color: #111; }
 .tags i.trade { background: var(--lime); color: #111; }
+.tags i.free { background: #ffe14d; color: #111; }
 
 /* ---------- dress page ---------- */
 .detail { display: grid; grid-template-columns: 1.1fr 1fr; gap: 40px; align-items: start; }
