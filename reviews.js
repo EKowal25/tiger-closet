@@ -111,6 +111,53 @@ function mount(app, { requireAuth, checkCsrf, flash, clean, toInt, notify, attac
   });
 
   // ----- admin -----
+  // Activity overview: everything in progress on the site.
+  app.get('/admin', requireAuth, async (req, res) => {
+    if (!isAdmin(req.user)) return notFound(res);
+    const stats = await db.one(`SELECT
+      (SELECT count(*)::int FROM users) AS users,
+      (SELECT count(*)::int FROM dresses WHERE active) AS dresses,
+      (SELECT count(*)::int FROM requests WHERE status IN ('pending','countered','accepted')) AS open_requests,
+      (SELECT count(*)::int FROM trades WHERE status IN ('pending','countered','accepted')) AS open_trades,
+      (SELECT count(*)::int FROM requests WHERE status = 'returned') + (SELECT count(*)::int FROM trades WHERE status = 'completed') AS done,
+      (SELECT count(*)::int FROM reports WHERE status = 'open') AS open_reports`);
+    const openRequests = await db.all(`
+      SELECT r.*, d.title AS dress_title, d.owner_id, sd.title AS swap_title,
+             o.name AS owner_name, o.email AS owner_email, b.name AS borrower_name, b.email AS borrower_email,
+             (r.status = 'accepted' AND r.return_date < current_date) AS overdue
+      FROM requests r JOIN dresses d ON d.id = r.dress_id JOIN users o ON o.id = d.owner_id JOIN users b ON b.id = r.borrower_id
+      LEFT JOIN dresses sd ON sd.id = r.swap_dress_id
+      WHERE r.status IN ('pending','countered','accepted')
+      ORDER BY (r.status = 'accepted' AND r.return_date < current_date) DESC, r.updated_at DESC LIMIT 300`);
+    const openTrades = await db.all(`
+      SELECT t.*, d.title AS dress_title, o.name AS owner_name, o.email AS owner_email, f.name AS offerer_name, f.email AS offerer_email,
+             (SELECT string_agg(x.title, ', ') FROM trade_items i JOIN dresses x ON x.id = i.dress_id WHERE i.trade_id = t.id) AS items
+      FROM trades t JOIN dresses d ON d.id = t.dress_id JOIN users o ON o.id = t.owner_id JOIN users f ON f.id = t.offerer_id
+      WHERE t.status IN ('pending','countered','accepted') ORDER BY t.updated_at DESC LIMIT 300`);
+    const recentDone = await db.all(`
+      SELECT * FROM (
+        SELECT 'borrow' AS kind, r.status, r.updated_at, d.title AS dress_title, o.name AS a_name, b.name AS b_name
+        FROM requests r JOIN dresses d ON d.id = r.dress_id JOIN users o ON o.id = d.owner_id JOIN users b ON b.id = r.borrower_id
+        WHERE r.status IN ('returned','declined','cancelled')
+        UNION ALL
+        SELECT 'trade', t.status, t.updated_at, d.title, o.name, f.name
+        FROM trades t JOIN dresses d ON d.id = t.dress_id JOIN users o ON o.id = t.owner_id JOIN users f ON f.id = t.offerer_id
+        WHERE t.status IN ('completed','declined','cancelled')
+      ) x ORDER BY updated_at DESC LIMIT 30`);
+    const newUsers = await db.all(`
+      SELECT u.id, u.name, u.email, u.created_at,
+             (SELECT count(*)::int FROM dresses d WHERE d.owner_id = u.id) AS listings,
+             (SELECT count(*)::int FROM reviews v WHERE v.reviewee_id = u.id) AS reviews,
+             (SELECT round(avg(rating)::numeric, 1) FROM reviews v WHERE v.reviewee_id = u.id) AS rating,
+             (SELECT count(*)::int FROM reports p WHERE p.reported_id = u.id) AS reports
+      FROM users u ORDER BY u.created_at DESC LIMIT 50`);
+    const newDresses = await db.all(`SELECT d.id, d.title, d.size, d.active, d.created_at, d.owner_id, u.name AS owner_name
+                                     FROM dresses d JOIN users u ON u.id = d.owner_id ORDER BY d.created_at DESC LIMIT 30`);
+    const recentReviews = await db.all(`SELECT v.rating, v.comment, v.created_at, v.reviewee_id, a.name AS reviewer_name, b.name AS reviewee_name
+                                        FROM reviews v JOIN users a ON a.id = v.reviewer_id JOIN users b ON b.id = v.reviewee_id ORDER BY v.created_at DESC LIMIT 20`);
+    res.render('admin', { title: 'Site activity', stats, openRequests, openTrades, recentDone, newUsers, newDresses, recentReviews });
+  });
+
   app.get('/admin/reports', requireAuth, async (req, res) => {
     if (!isAdmin(req.user)) return notFound(res);
     const reports = await db.all(`

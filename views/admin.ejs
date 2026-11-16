@@ -1,0 +1,88 @@
+<%- include('partials/header') %>
+<%
+  const termsText = r => [
+    r.offer_free ? 'free' : null,
+    r.offer_fee ? '$' + r.fee_amount + ' rental fee' : null,
+    r.offer_deposit ? '$' + r.deposit_amount + ' deposit' : null,
+    r.offer_dryclean ? 'dry clean' : null,
+    r.offer_swap ? 'swap for "' + (r.swap_title || 'a dress') + '"' : null,
+  ].filter(Boolean).join(' + ');
+  const day = (d) => new Date(d).toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+  const label = (s) => ({ countered: 'counter offer', completed: 'traded' })[s] || s;
+  const person = (id, name, email) => { %><a href="/users/<%= id %>"><strong><%= name || '(no name yet)' %></strong></a> <span class="muted">(<%= email %>)</span><% };
+%>
+<div class="pagehead">
+  <h1>Site activity</h1>
+  <a class="btn ghost" href="/admin/reports">Reports<%= stats.open_reports ? ' (' + stats.open_reports + ' open)' : '' %></a>
+</div>
+<p class="muted">Only admins can see this page.</p>
+
+<div class="statgrid">
+  <div class="stat"><strong><%= stats.users %></strong><span>accounts</span></div>
+  <div class="stat"><strong><%= stats.dresses %></strong><span>active listings</span></div>
+  <div class="stat"><strong><%= stats.open_requests %></strong><span>borrows in progress</span></div>
+  <div class="stat"><strong><%= stats.open_trades %></strong><span>trades in progress</span></div>
+  <div class="stat"><strong><%= stats.done %></strong><span>completed deals</span></div>
+  <div class="stat"><strong><%= stats.open_reports %></strong><span>open reports</span></div>
+</div>
+
+<h2>Borrows and swaps in progress</h2>
+<% if (!openRequests.length) { %><p class="muted">Nothing in progress.</p><% } %>
+<% openRequests.forEach(r => { %>
+  <div class="req card report-row">
+    <div class="meta2"><span class="status <%= r.status %>"><%= label(r.status) %></span>
+      <a href="/dresses/<%= r.dress_id %>"><strong><%= r.dress_title %></strong></a>
+      <span class="muted"><%= r.pickup_date %> → <%= r.return_date %> · requested <%= day(r.created_at) %></span>
+      <% if (r.overdue) { %><span class="status declined">past return date</span><% } %></div>
+    <p>Lender: <% person(r.owner_id, r.owner_name, r.owner_email) %> · Borrower: <% person(r.borrower_id, r.borrower_name, r.borrower_email) %></p>
+    <p class="muted">Terms: <%= termsText(r) %><%= r.status === 'countered' && r.counter ? ' · counter: ' + termsText(r.counter) : '' %></p>
+  </div>
+<% }) %>
+
+<h2>Trades in progress</h2>
+<% if (!openTrades.length) { %><p class="muted">Nothing in progress.</p><% } %>
+<% openTrades.forEach(t => { %>
+  <div class="req card report-row">
+    <div class="meta2"><span class="status <%= t.status %>"><%= label(t.status) %></span>
+      <a href="/dresses/<%= t.dress_id %>"><strong><%= t.dress_title %></strong></a>
+      <span class="muted">offered <%= day(t.created_at) %></span></div>
+    <p>Owner: <% person(t.owner_id, t.owner_name, t.owner_email) %> · Offered by: <% person(t.offerer_id, t.offerer_name, t.offerer_email) %></p>
+    <p class="muted">In exchange for: <%= t.items || '(nothing listed)' %><%= t.status === 'accepted' ? ' · confirmed: owner ' + (t.owner_confirmed ? 'yes' : 'no') + ', offerer ' + (t.offerer_confirmed ? 'yes' : 'no') : '' %></p>
+  </div>
+<% }) %>
+
+<h2>Recently finished</h2>
+<% if (!recentDone.length) { %><p class="muted">No finished deals yet.</p><% } %>
+<% if (recentDone.length) { %>
+  <div class="card tablecard"><table class="admintable">
+    <tr><th>When</th><th>Type</th><th>Dress</th><th>Between</th><th>Result</th></tr>
+    <% recentDone.forEach(x => { %>
+      <tr><td><%= day(x.updated_at) %></td><td><%= x.kind %></td><td><%= x.dress_title %></td><td><%= x.a_name %> &amp; <%= x.b_name %></td><td><span class="status <%= x.status %>"><%= label(x.status) %></span></td></tr>
+    <% }) %>
+  </table></div>
+<% } %>
+
+<h2>Newest accounts</h2>
+<div class="card tablecard"><table class="admintable">
+  <tr><th>Joined</th><th>Name</th><th>Email</th><th>Listings</th><th>Rating</th><th>Reports against</th></tr>
+  <% newUsers.forEach(u => { %>
+    <tr><td><%= day(u.created_at) %></td><td><a href="/users/<%= u.id %>"><%= u.name || '(no name yet)' %></a></td><td><%= u.email %></td><td><%= u.listings %></td>
+      <td><%= u.reviews ? u.rating + ' (' + u.reviews + ')' : '—' %></td><td><%= u.reports || '—' %></td></tr>
+  <% }) %>
+</table></div>
+
+<h2>Newest listings</h2>
+<div class="card tablecard"><table class="admintable">
+  <tr><th>Posted</th><th>Dress</th><th>Owner</th><th>Size</th><th>Visible</th></tr>
+  <% newDresses.forEach(d => { %>
+    <tr><td><%= day(d.created_at) %></td><td><a href="/dresses/<%= d.id %>"><%= d.title %></a></td><td><a href="/users/<%= d.owner_id %>"><%= d.owner_name %></a></td><td><%= d.size %></td><td><%= d.active ? 'yes' : 'hidden' %></td></tr>
+  <% }) %>
+</table></div>
+
+<h2>Latest reviews</h2>
+<% if (!recentReviews.length) { %><p class="muted">No reviews yet.</p><% } %>
+<% recentReviews.forEach(v => { %>
+  <div class="review"><span class="rating"><%= stars(v.rating) %></span> <strong><%= v.reviewer_name %></strong> → <a href="/users/<%= v.reviewee_id %>"><%= v.reviewee_name %></a>
+    <span class="muted">· <%= day(v.created_at) %></span><% if (v.comment) { %><p><%= v.comment %></p><% } %></div>
+<% }) %>
+<%- include('partials/footer') %>
