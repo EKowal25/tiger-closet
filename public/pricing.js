@@ -79,7 +79,7 @@
     return {
       retail, retailEstimated, brand: brand && brand.name, reasons,
       condition: c ? c.label : null, value,
-      deposit: clamp(round5(value * 0.5), 20, 500),   // about half of what the dress is worth now
+      deposit: clamp(round5(value * 0.2), 10, 500),   // about 20% of what the dress is worth now
       rental: clamp(round5(value * 0.15), 10, 150),   // about 15% of its current value
     };
   }

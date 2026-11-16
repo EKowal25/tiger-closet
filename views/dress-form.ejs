@@ -9,7 +9,7 @@
   <form method="post" action="<%= editing ? '/dresses/' + d.id + '/edit' : '/dresses' %>" <%- editing ? '' : 'enctype="multipart/form-data"' %> class="stack" id="dressForm">
     <input type="hidden" name="_csrf" value="<%= csrf %>">
     <% if (!editing) { %>
-      <label>Photos (up to 6) <input type="file" name="photos" accept="image/jpeg,image/png,image/webp,image/heic" multiple required id="photos"></label>
+      <label>Photos (up to 6; the first one is the cover) <input type="file" name="photos" accept="image/jpeg,image/png,image/webp,image/heic" multiple required id="photos"></label>
       <div id="preview" class="preview"></div>
     <% } %>
     <label>Title <input name="title" required maxlength="100" placeholder="Emerald satin slip dress" value="<%= v('title') %>"></label>
@@ -100,7 +100,7 @@
            <div class="est-row hi"><span>Suggested deposit</span><strong>${money(e.deposit)}</strong></div>
            <div class="est-row hi"><span>Suggested rental price</span><strong>${money(e.rental)}</strong></div>
            <small class="muted">${e.retailEstimated ? 'Based on: ' + e.reasons.join(' · ') + '. Enter the original price above if you know it.' : 'Based on the original price you entered.'}
-           The deposit is about half of what the dress is worth now; rental is about 15%. These are just suggestions: you can edit both below.</small>`
+           The deposit is about 20% of what the dress is worth now; rental is about 15%. These are just suggestions: you can edit both below.</small>`
         : '<small class="muted">Pick the condition to see an estimated value, a suggested deposit and a rental price.</small>';
       if (!cond) return;
       if (!depTouched) dep.value = e.deposit;
@@ -125,45 +125,86 @@
   const btn = document.getElementById('submitBtn'), errBox = document.getElementById('formErr');
   const dep = document.getElementById('allowDeposit'), wrap = document.getElementById('minDepositWrap');
   dep.addEventListener('change', () => wrap.hidden = !dep.checked);
-  const feeBox = document.getElementById('allowFee'), feeWrap = document.getElementById('feeWrap');
-  feeBox.addEventListener('change', () => feeWrap.hidden = !feeBox.checked);
-  if (input) input.addEventListener('change', () => {
-    preview.innerHTML = '';
-    [...input.files].slice(0, 6).forEach(f => { const i = new Image(); i.src = URL.createObjectURL(f); preview.appendChild(i); });
-  });
 
-  // Shrink photos to at most 1600px (JPEG) so the upload is fast and stays under the server's size limit.
-  async function shrink(file) {
-    try {
-      const bmp = await createImageBitmap(file);
-      const scale = Math.min(1, 1600 / Math.max(bmp.width, bmp.height));
-      const c = document.createElement('canvas');
-      c.width = Math.round(bmp.width * scale); c.height = Math.round(bmp.height * scale);
-      c.getContext('2d').drawImage(bmp, 0, 0, c.width, c.height);
-      const blob = await new Promise(r => c.toBlob(r, 'image/jpeg', 0.82));
-      return blob ? new File([blob], file.name.replace(/\.\w+$/, '') + '.jpg', { type: 'image/jpeg' }) : file;
-    } catch { return file; } // e.g. HEIC on browsers that can't decode it
-  }
+  if (input) {
+    const MAX_PHOTOS = 6, BUDGET = 3.9 * 1024 * 1024; // the host accepts about 4.5 MB per upload
+    let picked = [];                                   // photos chosen so far, across several picks
+    input.required = false;                            // we check "at least one photo" ourselves
 
-  if (input) form.addEventListener('submit', async (e) => {
-    e.preventDefault();
-    if (!input.files.length) return;
-    errBox.hidden = true; btn.disabled = true; btn.textContent = 'Uploading…';
-    try {
-      const data = new FormData(form);
-      data.delete('photos');
-      for (const f of [...input.files].slice(0, 6)) data.append('photos', await shrink(f));
-      let total = 0; for (const [, v] of data) total += v.size || 0;
-      if (total > 4.2 * 1024 * 1024) throw new Error('Those photos are too large together. Try fewer or smaller photos.');
-      const res = await fetch(form.action, { method: 'POST', body: data, headers: { 'X-Requested-With': 'fetch' } });
-      if (res.status === 413) throw new Error('Those photos are too large. Try fewer or smaller photos.');
-      const out = await res.json().catch(() => ({}));
-      if (out.redirect) return void (window.location.href = out.redirect);
-      throw new Error(out.error || 'Upload failed. Please try again.');
-    } catch (err) {
-      errBox.textContent = err.message || 'Upload failed. Please try again.'; errBox.hidden = false;
-      btn.disabled = false; btn.textContent = 'Post dress';
+    function render() {
+      preview.innerHTML = '';
+      picked.forEach((f, i) => {
+        const box = document.createElement('div'); box.className = 'thumb';
+        const img = new Image(); img.src = URL.createObjectURL(f); img.alt = '';
+        const x = document.createElement('button'); x.type = 'button'; x.textContent = '✕'; x.title = 'Remove this photo';
+        x.addEventListener('click', () => { picked.splice(i, 1); render(); });
+        box.append(img, x);
+        if (i === 0) { const tag = document.createElement('span'); tag.textContent = 'Cover'; box.append(tag); }
+        preview.append(box);
+      });
+      const note = document.createElement('small'); note.className = 'muted photo-count';
+      note.textContent = picked.length
+        ? `${picked.length} of ${MAX_PHOTOS} photos${picked.length < MAX_PHOTOS ? '. Tap “Choose files” again to add more.' : '.'}`
+        : 'You can select several photos at once, or add them one at a time.';
+      preview.append(note);
     }
-  });
+
+    input.addEventListener('change', () => {
+      for (const f of input.files) {
+        if (picked.length >= MAX_PHOTOS) { errBox.textContent = `You can add up to ${MAX_PHOTOS} photos.`; errBox.hidden = false; break; }
+        if (!picked.some((p) => p.name === f.name && p.size === f.size && p.lastModified === f.lastModified)) picked.push(f);
+      }
+      input.value = '';   // so picking again adds to the list instead of replacing it
+      render();
+    });
+    render();
+
+    // Shrink a photo to JPEG at the given size and quality.
+    async function shrink(file, maxSide, quality) {
+      try {
+        const bmp = await createImageBitmap(file);
+        const scale = Math.min(1, maxSide / Math.max(bmp.width, bmp.height));
+        const c = document.createElement('canvas');
+        c.width = Math.round(bmp.width * scale); c.height = Math.round(bmp.height * scale);
+        c.getContext('2d').drawImage(bmp, 0, 0, c.width, c.height);
+        const blob = await new Promise((r) => c.toBlob(r, 'image/jpeg', quality));
+        return blob ? new File([blob], file.name.replace(/\.\w+$/, '') + '.jpg', { type: 'image/jpeg' }) : file;
+      } catch { return file; } // e.g. HEIC on browsers that can't decode it
+    }
+
+    // Try smaller and smaller settings until all the photos fit in one upload.
+    async function shrinkAll(files) {
+      const steps = [[1600, 0.82], [1400, 0.76], [1200, 0.7], [1000, 0.64], [850, 0.58], [700, 0.5]];
+      let out = files;
+      for (const [side, q] of steps) {
+        out = [];
+        for (const f of files) out.push(await shrink(f, side, q));
+        if (out.reduce((n, f) => n + f.size, 0) <= BUDGET) return out;
+      }
+      return null;
+    }
+
+    form.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      errBox.hidden = true;
+      if (!picked.length) { errBox.textContent = 'Add at least one photo.'; errBox.hidden = false; return; }
+      btn.disabled = true; btn.textContent = picked.length > 1 ? `Uploading ${picked.length} photos…` : 'Uploading…';
+      try {
+        const photos = await shrinkAll(picked);
+        if (!photos) throw new Error('Those photos are too large to upload together. Try removing one.');
+        const data = new FormData(form);
+        data.delete('photos');
+        photos.forEach((f) => data.append('photos', f));
+        const res = await fetch(form.action, { method: 'POST', body: data, headers: { 'X-Requested-With': 'fetch' } });
+        if (res.status === 413) throw new Error('Those photos are too large to upload together. Try removing one.');
+        const out = await res.json().catch(() => ({}));
+        if (out.redirect) return void (window.location.href = out.redirect);
+        throw new Error(out.error || 'Upload failed. Please try again.');
+      } catch (err) {
+        errBox.textContent = err.message || 'Upload failed. Please try again.'; errBox.hidden = false;
+        btn.disabled = false; btn.textContent = 'Post dress';
+      }
+    });
+  }
 </script>
 <%- include('partials/footer') %>
