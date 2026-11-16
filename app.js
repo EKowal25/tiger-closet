@@ -8,6 +8,7 @@ const db = require('./db');
 const storage = require('./storage');
 const mail = require('./mail');
 const mountAuth = require('./auth');
+const makeNotify = require('./notify');
 
 const PORT = process.env.PORT || 3000;
 const BASE_URL = (process.env.BASE_URL
@@ -65,7 +66,7 @@ function go(req, res, url) {
 
 function requireAuth(req, res, next) {
   if (!req.user) return res.redirect('/login?next=' + encodeURIComponent(req.originalUrl));
-  if (mail.enabled && !req.user.email_verified) return res.redirect('/verify');
+  if (mail.verifyRequired && !req.user.email_verified) return res.redirect('/verify');
   if (!req.user.name && !req.path.startsWith('/profile')) return res.redirect('/profile?welcome=1');
   next();
 }
@@ -108,6 +109,9 @@ app.get('/photos/:key', async (req, res) => {
   if (!(await storage.send(req.params.key, res))) res.sendStatus(404);
 });
 
+const notify = makeNotify(BASE_URL);
+const who = (u) => (u && u.name) || 'Someone';
+
 // ---------- auth ----------
 mountAuth(app, { checkCsrf, flash, safeNext, clean, BASE_URL, ALLOWED_DOMAIN });
 
@@ -140,8 +144,8 @@ app.get('/profile', requireAuth, (req, res) => {
 app.post('/profile', requireAuth, checkCsrf, async (req, res) => {
   const name = clean(req.body.name, 80);
   if (!name) { flash(req, 'Please add your name.', 'err'); return res.redirect('/profile'); }
-  await db.all('UPDATE users SET name = $1, class_year = $2, college = $3, phone = $4 WHERE id = $5',
-    [name, clean(req.body.class_year, 4), clean(req.body.college, 40), clean(req.body.phone, 30), req.user.id]);
+  await db.all('UPDATE users SET name = $1, class_year = $2, college = $3, phone = $4, notify_email = $5 WHERE id = $6',
+    [name, clean(req.body.class_year, 4), clean(req.body.college, 40), clean(req.body.phone, 30), !!req.body.notify_email, req.user.id]);
   flash(req, 'Profile saved.');
   res.redirect('/browse');
 });
@@ -330,12 +334,17 @@ app.post('/dresses/:id/request', requireAuth, checkCsrf, async (req, res) => {
                 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)`,
     [dress.id, req.user.id, clean(b.event_name, 80), pickup, ret, offer.deposit, offer.dryclean, offer.swap,
      offer.free, offer.fee, deposit, fee, swapId, clean(b.message, 1000)]);
+  await notify(dress.owner_id, {
+    subject: `${who(req.user)} wants to borrow your ${dress.title}`,
+    lines: [`${who(req.user)} sent a request for your ${dress.title} (${pickup} to ${ret}).`, 'Open your closet to see their terms and accept or decline.'],
+    link: '/closet#received', button: 'Review request',
+  });
   flash(req, 'Request sent! You will see the owner’s contact info here once your request is accepted.');
   res.redirect('/closet#sent');
 });
 
 app.post('/requests/:id/:action', requireAuth, checkCsrf, async (req, res) => {
-  const r = await db.one(`SELECT r.*, d.owner_id FROM requests r JOIN dresses d ON d.id = r.dress_id WHERE r.id = $1`, [toInt(req.params.id)]);
+  const r = await db.one(`SELECT r.*, d.owner_id, d.title AS dress_title FROM requests r JOIN dresses d ON d.id = r.dress_id WHERE r.id = $1`, [toInt(req.params.id)]);
   if (!r) return res.sendStatus(404);
   const isOwner = r.owner_id === req.user.id, isBorrower = r.borrower_id === req.user.id;
   const back = '/closet' + (isOwner ? '#received' : '#sent');
@@ -345,9 +354,14 @@ app.post('/requests/:id/:action', requireAuth, checkCsrf, async (req, res) => {
   if (action === 'gotback') {
     if (!r.offer_swap || r.status !== 'accepted' || !(isOwner || isBorrower)) return res.sendStatus(400);
     const col = isOwner ? 'owner_got_back' : 'borrower_got_back';
-    await db.all(`UPDATE requests SET ${col} = true, updated_at = now(),
+    const [row] = await db.all(`UPDATE requests SET ${col} = true, updated_at = now(),
                   status = CASE WHEN (owner_got_back OR $2) AND (borrower_got_back OR $3) THEN 'returned' ELSE status END
-                  WHERE id = $1`, [r.id, isOwner, isBorrower]);
+                  WHERE id = $1 RETURNING status`, [r.id, isOwner, isBorrower]);
+    const other = isOwner ? r.borrower_id : r.owner_id;
+    await notify(other, row.status === 'returned'
+      ? { subject: `Swap complete: ${r.dress_title}`, lines: [`${who(req.user)} confirmed they got their dress back, so your swap for ${r.dress_title} is complete.`] }
+      : { subject: `${who(req.user)} got their dress back`, lines: [`${who(req.user)} confirmed they got their own dress back from your swap (${r.dress_title}).`, 'Once you have yours back too, tap “I got my dress back” to close the swap.'],
+          link: isOwner ? '/closet#sent' : '/closet#received', button: 'Open my closet' });
     return res.redirect(back);
   }
 
@@ -360,6 +374,13 @@ app.post('/requests/:id/:action', requireAuth, checkCsrf, async (req, res) => {
   const t = transitions[action];
   if (!t || !t.who || !t.from.includes(r.status)) return res.sendStatus(400);
   await db.all(`UPDATE requests SET status = $1, updated_at = now() WHERE id = $2`, [t.to, r.id]);
+  const messages = {
+    accept: [r.borrower_id, { subject: `Accepted: you can borrow ${r.dress_title}`, lines: [`${who(req.user)} accepted your request for ${r.dress_title}!`, 'Their contact info is now in your closet so you can arrange pickup.'], link: '/closet#sent', button: 'See contact info' }],
+    decline: [r.borrower_id, { subject: `Request declined: ${r.dress_title}`, lines: [`${who(req.user)} can't lend ${r.dress_title} this time.`, 'There are plenty more dresses to browse.'], link: '/browse', button: 'Browse dresses' }],
+    cancel: [r.owner_id, { subject: `Request cancelled: ${r.dress_title}`, lines: [`${who(req.user)} cancelled their request for your ${r.dress_title}.`], link: '/closet#received' }],
+    returned: [r.borrower_id, { subject: `Return confirmed: ${r.dress_title}`, lines: [`${who(req.user)} marked ${r.dress_title} as returned. Thanks for borrowing!`], link: '/closet#sent' }],
+  };
+  if (messages[action]) await notify(...messages[action]);
   res.redirect(back);
 });
 
@@ -386,12 +407,17 @@ app.post('/dresses/:id/trade', requireAuth, checkCsrf, async (req, res) => {
       [dress.id, dress.owner_id, req.user.id, clean(req.body.message, 1000)]);
     await q('INSERT INTO trade_items (trade_id, dress_id) SELECT $1, unnest($2::int[])', [t.id, ids]);
   });
+  await notify(dress.owner_id, {
+    subject: `New trade offer for your ${dress.title}`,
+    lines: [`${who(req.user)} offered ${ids.length === 1 ? 'one of their dresses' : ids.length + ' of their dresses'} in exchange for your ${dress.title}, to keep.`, 'Take a look and accept or decline.'],
+    link: '/closet#trades-received', button: 'Review offer',
+  });
   flash(req, 'Trade offer sent! If it\u2019s accepted, you\u2019ll both see each other\u2019s contact info to meet up.');
   res.redirect('/closet#trades-sent');
 });
 
 app.post('/trades/:id/:action', requireAuth, checkCsrf, async (req, res) => {
-  const t = await db.one('SELECT * FROM trades WHERE id = $1', [toInt(req.params.id)]);
+  const t = await db.one('SELECT t.*, d.title AS dress_title FROM trades t JOIN dresses d ON d.id = t.dress_id WHERE t.id = $1', [toInt(req.params.id)]);
   if (!t) return res.sendStatus(404);
   const isOwner = t.owner_id === req.user.id, isOfferer = t.offerer_id === req.user.id;
   if (!isOwner && !isOfferer) return res.sendStatus(403);
@@ -409,12 +435,16 @@ app.post('/trades/:id/:action', requireAuth, checkCsrf, async (req, res) => {
   if (action === 'accept' && isOwner && t.status === 'pending') {
     if (!(await stillValid(db.all))) return fail('One of the dresses in this offer is no longer available.');
     await db.all(`UPDATE trades SET status = 'accepted', updated_at = now() WHERE id = $1`, [t.id]);
-    await db.all(`UPDATE trades SET status = 'declined', updated_at = now() WHERE dress_id = $1 AND status = 'pending' AND id != $2`, [t.dress_id, t.id]);
+    const others = await db.all(`UPDATE trades SET status = 'declined', updated_at = now() WHERE dress_id = $1 AND status = 'pending' AND id != $2 RETURNING offerer_id`, [t.dress_id, t.id]);
+    await notify(t.offerer_id, { subject: `Trade accepted: ${t.dress_title}`, lines: [`${who(req.user)} accepted your trade offer for ${t.dress_title}!`, 'Their contact info is in your closet. Meet up to exchange dresses, then both tap “We’ve swapped”.'], link: '/closet#trades-sent', button: 'See contact info' });
+    for (const o of others) await notify(o.offerer_id, { subject: `Trade offer declined: ${t.dress_title}`, lines: [`${t.dress_title} was traded to someone else, so your offer was declined.`], link: '/swaps', button: 'See what’s up for trade' });
     flash(req, 'Trade accepted! Meet up to exchange dresses, then both of you tap \u201cWe\u2019ve swapped\u201d.');
   } else if (action === 'decline' && isOwner && t.status === 'pending') {
     await db.all(`UPDATE trades SET status = 'declined', updated_at = now() WHERE id = $1`, [t.id]);
+    await notify(t.offerer_id, { subject: `Trade offer declined: ${t.dress_title}`, lines: [`${who(req.user)} declined your trade offer for ${t.dress_title}.`], link: '/swaps', button: 'See what’s up for trade' });
   } else if (action === 'cancel' && (isOfferer ? ['pending', 'accepted'] : ['accepted']).includes(t.status)) {
     await db.all(`UPDATE trades SET status = 'cancelled', updated_at = now() WHERE id = $1`, [t.id]);
+    await notify(isOwner ? t.offerer_id : t.owner_id, { subject: `Trade called off: ${t.dress_title}`, lines: [`${who(req.user)} called off the trade for ${t.dress_title}.`], link: isOwner ? '/closet#trades-sent' : '/closet#trades-received' });
   } else if (action === 'confirm' && t.status === 'accepted') {
     const done = await db.tx(async (q) => {
       const [row] = await q(`UPDATE trades SET ${isOwner ? 'owner_confirmed' : 'offerer_confirmed'} = true, updated_at = now()
@@ -435,6 +465,10 @@ app.post('/trades/:id/:action', requireAuth, checkCsrf, async (req, res) => {
       return true;
     }).catch((e) => { if (e.message === 'trade no longer valid') return 'invalid'; throw e; });
     if (done === 'invalid') return fail('One of the dresses in this trade is no longer available.');
+    const other = isOwner ? t.offerer_id : t.owner_id;
+    await notify(other, done
+      ? { subject: `Trade complete: ${t.dress_title}`, lines: [`${who(req.user)} confirmed too, so your trade is complete! The dresses have moved to each other’s closets.`], link: '/closet' }
+      : { subject: `${who(req.user)} confirmed your trade`, lines: [`${who(req.user)} confirmed you've exchanged dresses for ${t.dress_title}.`, 'Tap “We’ve swapped” too to finish the trade.'], link: isOwner ? '/closet#trades-sent' : '/closet#trades-received', button: 'Finish the trade' });
     flash(req, done ? 'Trade complete! The dresses now show up in each other\u2019s closets.' : 'Got it. The trade completes once the other person confirms too.');
   } else {
     return res.sendStatus(400);

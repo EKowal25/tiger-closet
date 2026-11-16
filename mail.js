@@ -11,4 +11,7 @@ async function send({ to, subject, text, html }) {
   if (!res.ok) throw new Error(`Email send failed (${res.status}): ${await res.text()}`);
 }
 
-module.exports = { enabled, send };
+// Signup/login verification codes stay off unless explicitly turned on.
+const verifyRequired = enabled && process.env.REQUIRE_EMAIL_VERIFICATION === 'true';
+
+module.exports = { enabled, verifyRequired, send };

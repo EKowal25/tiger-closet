@@ -28,7 +28,7 @@ const hashCode = (code) => crypto.createHmac('sha256', process.env.SESSION_SECRE
 module.exports = function mountAuth(app, { checkCsrf, flash, safeNext, clean, BASE_URL, ALLOWED_DOMAIN }) {
   const emailRe = new RegExp(`^[a-z0-9._-]+@${ALLOWED_DOMAIN.replace(/\./g, '\\.')}$`);
   const normEmail = (v) => clean(v, 120).toLowerCase();
-  const render = (res, view, title, extra = {}) => res.render(view, { title, domain: ALLOWED_DOMAIN, emailEnabled: mail.enabled, ...extra });
+  const render = (res, view, title, extra = {}) => res.render(view, { title, domain: ALLOWED_DOMAIN, emailEnabled: mail.enabled, verifyRequired: mail.verifyRequired, ...extra });
 
   function startSession(req, user) {
     req.session.userId = user.id;
@@ -90,7 +90,7 @@ module.exports = function mountAuth(app, { checkCsrf, flash, safeNext, clean, BA
        RETURNING *`, [netid, email, await hashPassword(pw)]);
     if (!user) return again('There is already an account with that email. Try logging in instead.');
     startSession(req, user);
-    if (mail.enabled) {
+    if (mail.verifyRequired) {
       await sendCode(user, 'verify');
       req.session.next = next;
       return res.redirect('/verify');
@@ -124,7 +124,7 @@ module.exports = function mountAuth(app, { checkCsrf, flash, safeNext, clean, BA
     }
     await db.all('UPDATE users SET failed_logins = 0, locked_until = NULL WHERE id = $1', [user.id]);
     startSession(req, user);
-    if (mail.enabled && !user.email_verified) {
+    if (mail.verifyRequired && !user.email_verified) {
       await sendCode(user, 'verify');
       req.session.next = next;
       return res.redirect('/verify');
@@ -135,7 +135,7 @@ module.exports = function mountAuth(app, { checkCsrf, flash, safeNext, clean, BA
   // ----- verify email -----
   app.get('/verify', (req, res) => {
     if (!req.user) return res.redirect('/login');
-    if (req.user.email_verified || !mail.enabled) return res.redirect('/browse');
+    if (req.user.email_verified || !mail.verifyRequired) return res.redirect('/browse');
     render(res, 'verify', 'Check your email');
   });
 
@@ -150,7 +150,7 @@ module.exports = function mountAuth(app, { checkCsrf, flash, safeNext, clean, BA
   });
 
   app.post('/verify/resend', checkCsrf, async (req, res) => {
-    if (!req.user || !mail.enabled) return res.redirect('/login');
+    if (!req.user || !mail.verifyRequired) return res.redirect('/login');
     const u = await db.one(`SELECT verify_sent_at > now() - interval '60 seconds' AS recent FROM users WHERE id = $1`, [req.user.id]);
     if (u && u.recent) flash(req, 'Please wait a minute before requesting another code.', 'err');
     else { await sendCode(req.user, 'verify'); flash(req, `New code sent to ${req.user.email}.`); }
