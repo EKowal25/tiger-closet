@@ -15,6 +15,7 @@
       </label>
     </div>
     <label>Phone (optional) <input name="phone" value="<%= user.phone || '' %>" maxlength="30" placeholder="For texting about pickup"></label>
+    <label class="check"><input type="checkbox" name="notify_email" <%= user.notify_email === false ? '' : 'checked' %>> <span>Email me at <%= user.email %> when someone requests my dresses, makes a trade offer, or answers my requests</span></label>
     <button class="btn">Save</button>
   </form>
 </section>
