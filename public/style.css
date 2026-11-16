@@ -300,3 +300,12 @@ a.tile:hover { transform: translate(-3px, -3px) rotate(-.6deg); box-shadow: var(
 .starpick input:focus-visible + label { outline: 3px solid var(--lime); }
 .report-row { display: block; }
 .report-row .meta2 { display: flex; gap: 10px; flex-wrap: wrap; align-items: center; }
+
+/* photo picker */
+.preview { align-items: flex-start; }
+.thumb { position: relative; }
+.thumb img { display: block; }
+.thumb button { position: absolute; top: -8px; right: -8px; width: 24px; height: 24px; border-radius: 50%; border: 2px solid var(--line); background: var(--surface); color: var(--ink); font-size: 12px; line-height: 1; cursor: pointer; padding: 0; }
+.thumb button:hover { background: var(--err-bg); }
+.thumb span { position: absolute; left: 4px; bottom: 4px; font: 700 10px 'DM Mono', monospace; text-transform: uppercase; background: var(--lime); color: #111; padding: 1px 6px; border-radius: 6px; border: 1.5px solid #111; }
+.photo-count { flex-basis: 100%; text-transform: none; letter-spacing: 0; font-weight: 500; }
