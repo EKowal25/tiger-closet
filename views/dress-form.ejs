@@ -1,42 +1,54 @@
 <%- include('partials/header') %>
+<%
+  const d = dress || { allow_deposit: true, min_deposit: 50, allow_dryclean: true, allow_swap: false, open_to_trade: false };
+  const editing = !!dress;
+  const v = (k) => (d[k] == null ? '' : d[k]);
+%>
 <section class="narrow card">
-  <h1>Post a dress</h1>
-  <form method="post" action="/dresses" enctype="multipart/form-data" class="stack" id="dressForm">
+  <h1><%= editing ? 'Edit listing' : 'Post a dress' %></h1>
+  <form method="post" action="<%= editing ? '/dresses/' + d.id + '/edit' : '/dresses' %>" <%- editing ? '' : 'enctype="multipart/form-data"' %> class="stack" id="dressForm">
     <input type="hidden" name="_csrf" value="<%= csrf %>">
-    <label>Photos (up to 6) <input type="file" name="photos" accept="image/jpeg,image/png,image/webp,image/heic" multiple required id="photos"></label>
-    <div id="preview" class="preview"></div>
-    <label>Title <input name="title" required maxlength="100" placeholder="Emerald satin slip dress"></label>
+    <% if (!editing) { %>
+      <label>Photos (up to 6) <input type="file" name="photos" accept="image/jpeg,image/png,image/webp,image/heic" multiple required id="photos"></label>
+      <div id="preview" class="preview"></div>
+    <% } %>
+    <label>Title <input name="title" required maxlength="100" placeholder="Emerald satin slip dress" value="<%= v('title') %>"></label>
     <div class="row">
-      <label>Size <select name="size" required><option value="">Choose…</option><% SIZES.forEach(s => { %><option><%= s %></option><% }) %></select></label>
-      <label>Length <select name="length"><option value="">—</option><% LENGTHS.forEach(l => { %><option><%= l %></option><% }) %></select></label>
+      <label>Size <select name="size" required><option value="">Choose…</option><% SIZES.forEach(s => { %><option <%= d.size === s ? 'selected' : '' %>><%= s %></option><% }) %></select></label>
+      <label>Length <select name="length"><option value="">—</option><% LENGTHS.forEach(l => { %><option <%= d.length === l ? 'selected' : '' %>><%= l %></option><% }) %></select></label>
     </div>
     <div class="row">
-      <label>Color <input name="color" maxlength="40" placeholder="Emerald"></label>
-      <label>Designer / brand <input name="designer" maxlength="60" placeholder="Reformation"></label>
+      <label>Color <input name="color" maxlength="40" placeholder="Emerald" value="<%= v('color') %>"></label>
+      <label>Designer / brand <input name="designer" maxlength="60" placeholder="Reformation" value="<%= v('designer') %>"></label>
     </div>
-    <label>Description <textarea name="description" rows="4" maxlength="2000" placeholder="Fit notes, fabric, any wear, when it's available…"></textarea></label>
+    <label>Description <textarea name="description" rows="4" maxlength="2000" placeholder="Fit notes, fabric, any wear, when it's available…"><%= v('description') %></textarea></label>
 
     <fieldset>
-      <legend>How can people borrow it?</legend>
-      <label class="check"><input type="checkbox" name="allow_deposit" checked id="allowDeposit"> They put down a deposit</label>
-      <label class="indent" id="minDepositWrap">Minimum deposit ($) <input type="number" name="min_deposit" min="0" max="2000" value="50"></label>
-      <label class="check"><input type="checkbox" name="allow_dryclean" checked> They agree to dry clean it before returning</label>
-      <label class="check"><input type="checkbox" name="allow_swap"> They swap one of their dresses with me</label>
+      <legend>Lend it: how can people borrow it?</legend>
+      <label class="check"><input type="checkbox" name="allow_deposit" <%= d.allow_deposit ? 'checked' : '' %> id="allowDeposit"> They put down a deposit</label>
+      <label class="indent" id="minDepositWrap" <%= d.allow_deposit ? '' : 'hidden' %>>Minimum deposit ($) <input type="number" name="min_deposit" min="0" max="2000" value="<%= d.min_deposit %>"></label>
+      <label class="check"><input type="checkbox" name="allow_dryclean" <%= d.allow_dryclean ? 'checked' : '' %>> They agree to dry clean it before returning</label>
+      <label class="check"><input type="checkbox" name="allow_swap" <%= d.allow_swap ? 'checked' : '' %>> <span>Temporary swap: we lend each other a dress, then give them back</span></label>
+    </fieldset>
+    <fieldset>
+      <legend>Trade it</legend>
+      <label class="check"><input type="checkbox" name="open_to_trade" <%= d.open_to_trade ? 'checked' : '' %>> <span><strong>Up for trade.</strong> I'd give this dress away for good in exchange for one (or more) of theirs.</span></label>
     </fieldset>
     <p class="flash err" id="formErr" hidden></p>
-    <button class="btn big" id="submitBtn">Post dress</button>
+    <button class="btn big" id="submitBtn"><%= editing ? 'Save changes' : 'Post dress' %></button>
+    <% if (editing) { %><a class="links" href="/dresses/<%= d.id %>">Cancel</a><% } %>
   </form>
 </section>
 <script>
   const form = document.getElementById('dressForm');
   const input = document.getElementById('photos'), preview = document.getElementById('preview');
   const btn = document.getElementById('submitBtn'), errBox = document.getElementById('formErr');
-  input.addEventListener('change', () => {
+  const dep = document.getElementById('allowDeposit'), wrap = document.getElementById('minDepositWrap');
+  dep.addEventListener('change', () => wrap.hidden = !dep.checked);
+  if (input) input.addEventListener('change', () => {
     preview.innerHTML = '';
     [...input.files].slice(0, 6).forEach(f => { const i = new Image(); i.src = URL.createObjectURL(f); preview.appendChild(i); });
   });
-  const dep = document.getElementById('allowDeposit'), wrap = document.getElementById('minDepositWrap');
-  dep.addEventListener('change', () => wrap.hidden = !dep.checked);
 
   // Shrink photos to at most 1600px (JPEG) so the upload is fast and stays under the server's size limit.
   async function shrink(file) {
@@ -51,7 +63,7 @@
     } catch { return file; } // e.g. HEIC on browsers that can't decode it
   }
 
-  form.addEventListener('submit', async (e) => {
+  if (input) form.addEventListener('submit', async (e) => {
     e.preventDefault();
     if (!input.files.length) return;
     errBox.hidden = true; btn.disabled = true; btn.textContent = 'Uploading…';

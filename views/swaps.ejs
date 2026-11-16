@@ -1,0 +1,33 @@
+<%- include('partials/header') %>
+<div class="pagehead">
+  <h1>Swap</h1>
+  <a class="btn" href="/dresses/new">+ Post a dress</a>
+</div>
+<div class="explain">
+  <div class="card"><h3>Trade for keeps</h3><p class="muted">Offer one or more of your dresses for a dress that's up for trade. If the owner accepts, you meet up, swap, and keep each other's dress.</p></div>
+  <div class="card"><h3>Temporary swap</h3><p class="muted">Lend each other a dress for the same event or weekend, then give them back. No deposit needed.</p></div>
+</div>
+<% if (!myCount) { %>
+  <div class="flash">To swap, you need at least one dress posted. <a href="/dresses/new">Post one now</a>.</div>
+<% } %>
+
+<% const grid = (list, swapLink) => { %>
+  <div class="grid">
+    <% list.forEach(d => { %>
+      <a class="tile" href="/dresses/<%= d.id %><%= swapLink %>">
+        <div class="ph"><% if (d.photos[0]) { %><img src="<%= photoUrl(d.photos[0]) %>" alt="<%= d.title %>" loading="lazy"><% } %></div>
+        <div class="meta">
+          <strong><%= d.title %></strong>
+          <span class="muted">Size <%= d.size %><%= d.length ? ' · ' + d.length : '' %> · <%= d.owner_name %></span>
+        </div>
+      </a>
+    <% }) %>
+  </div>
+<% } %>
+
+<h2>Up for trade</h2>
+<% if (!forTrade.length) { %><p class="muted">No dresses are up for trade yet. Mark one of yours as "Up for trade" from its <a href="/closet">listing</a>.</p><% } else { grid(forTrade, '#trade'); } %>
+
+<h2>Open to temporary swaps</h2>
+<% if (!forSwap.length) { %><p class="muted">No dresses are open to temporary swaps yet.</p><% } else { grid(forSwap, '?offer=swap'); } %>
+<%- include('partials/footer') %>

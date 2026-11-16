@@ -73,6 +73,35 @@ ALTER TABLE users ADD COLUMN IF NOT EXISTS failed_logins   INTEGER NOT NULL DEFA
 ALTER TABLE users ADD COLUMN IF NOT EXISTS locked_until    TIMESTAMPTZ;
 ALTER TABLE users ADD COLUMN IF NOT EXISTS session_version INTEGER NOT NULL DEFAULT 0;
 
+ALTER TABLE dresses  ADD COLUMN IF NOT EXISTS open_to_trade     BOOLEAN NOT NULL DEFAULT false;
+ALTER TABLE requests ADD COLUMN IF NOT EXISTS owner_got_back    BOOLEAN NOT NULL DEFAULT false;
+ALTER TABLE requests ADD COLUMN IF NOT EXISTS borrower_got_back BOOLEAN NOT NULL DEFAULT false;
+
+-- Permanent trades: the offerer gives one or more of their dresses for the owner's dress, for keeps.
+CREATE TABLE IF NOT EXISTS trades (
+  id                SERIAL PRIMARY KEY,
+  dress_id          INTEGER NOT NULL REFERENCES dresses(id) ON DELETE CASCADE,
+  owner_id          INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  offerer_id        INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  message           TEXT,
+  status            TEXT NOT NULL DEFAULT 'pending'
+                    CHECK (status IN ('pending','accepted','declined','cancelled','completed')),
+  owner_confirmed   BOOLEAN NOT NULL DEFAULT false,
+  offerer_confirmed BOOLEAN NOT NULL DEFAULT false,
+  created_at        TIMESTAMPTZ NOT NULL DEFAULT now(),
+  updated_at        TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+CREATE TABLE IF NOT EXISTS trade_items (
+  trade_id  INTEGER NOT NULL REFERENCES trades(id) ON DELETE CASCADE,
+  dress_id  INTEGER NOT NULL REFERENCES dresses(id) ON DELETE CASCADE,
+  PRIMARY KEY (trade_id, dress_id)
+);
+
+CREATE INDEX IF NOT EXISTS idx_trades_dress ON trades(dress_id);
+CREATE INDEX IF NOT EXISTS idx_trades_offerer ON trades(offerer_id);
+CREATE INDEX IF NOT EXISTS idx_trades_owner ON trades(owner_id);
+CREATE INDEX IF NOT EXISTS idx_trade_items_dress ON trade_items(dress_id);
 CREATE INDEX IF NOT EXISTS idx_dresses_owner ON dresses(owner_id);
 CREATE INDEX IF NOT EXISTS idx_photos_dress ON photos(dress_id);
 CREATE INDEX IF NOT EXISTS idx_requests_dress ON requests(dress_id);
@@ -91,4 +120,21 @@ function init() {
 async function all(sql, params = []) { await init(); return (await pool.query(sql, params)).rows; }
 async function one(sql, params = []) { return (await all(sql, params))[0] || null; }
 
-module.exports = { pool, init, all, one };
+// Runs fn(q) inside a transaction, where q(sql, params) returns rows.
+async function tx(fn) {
+  await init();
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
+    const result = await fn(async (sql, params = []) => (await client.query(sql, params)).rows);
+    await client.query('COMMIT');
+    return result;
+  } catch (e) {
+    await client.query('ROLLBACK').catch(() => {});
+    throw e;
+  } finally {
+    client.release();
+  }
+}
+
+module.exports = { pool, init, all, one, tx };

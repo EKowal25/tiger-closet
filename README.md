@@ -8,6 +8,10 @@ Princeton students can use Tiger Closet to lend, borrow and swap formal dresses.
   - offers a **deposit** of at least the owner's minimum, or
   - **agrees to dry clean** the dress before returning it, or
   - offers a **swap** with one of their own listed dresses.
+- **Swapping.**
+  - *Trade for keeps:* an owner marks a dress "Up for trade". Others offer one or more of their own dresses. If the owner accepts, they meet up, both tap "We've swapped", and the dresses change owners on the site.
+  - *Temporary swap:* lend each other a dress for the same dates. Each person confirms they got their own dress back, and the swap closes once both have.
+  - The **Swap** tab lists everything up for trade or open to temporary swaps. Owners can edit a listing at any time, e.g. to put it up for trade.
 - **Requests.** The owner accepts or declines each request. After an accept, both people see each other's contact info. The owner can mark the dress as returned.
 
 Payment for deposits happens outside the site (Venmo, cash, etc.).
