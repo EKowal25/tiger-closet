@@ -8,6 +8,7 @@
     r.offer_swap ? `swap for "${r.swap_title || 'a dress'}"` : null,
   ].filter(Boolean).join(' + ').replace(/^./, c => c.toUpperCase());
   const contact = (email, phone) => `${email}${phone ? ' · ' + phone : ''}`;
+  const payText = (r) => [r.offer_fee ? 'the $' + r.fee_amount + ' rental fee' : null, r.offer_deposit ? 'the $' + r.deposit_amount + ' deposit' : null].filter(Boolean).join(' and ');
   const statusLabel = (s) => ({ countered: 'counter offer', completed: 'traded' })[s] || s;
 %>
 <% const dealLinks = (kind, x) => {
@@ -33,7 +34,7 @@
             <% if (r.counter.message) { %><p class="msg">“<%= r.counter.message %>”</p><% } %>
             <p class="muted">Waiting for <%= r.borrower_name %> to accept or decline.</p></div>
         <% } %>
-        <% if (r.status === 'accepted') { %><p class="contact">Contact: <%= contact(r.borrower_email, r.borrower_phone) %></p><% } %>
+        <% if (r.status === 'accepted') { %><p class="contact">Contact: <%= contact(r.borrower_email, r.borrower_phone) %></p><% if (r.offer_deposit || r.offer_fee) { %><p class="paynote">💸 Collect <%= payText(r) %> by Zelle or Venmo before handing over the dress.<%= r.offer_deposit ? ' Send the deposit back when the dress is returned in the same condition.' : '' %></p><% } } %>
       </div>
       <div class="actions">
         <% const act = (a, label, cls) => { %>
@@ -62,7 +63,7 @@
           <div class="counter-box"><strong><%= r.owner_name %>'s counter offer:</strong> <%= r.counter.pickup_date %> → <%= r.counter.return_date %> · <%= termsText(r.counter) %>
             <% if (r.counter.message) { %><p class="msg">“<%= r.counter.message %>”</p><% } %></div>
         <% } %>
-        <% if (r.status === 'accepted') { %><p class="contact">Contact: <%= contact(r.owner_email, r.owner_phone) %></p><% } %>
+        <% if (r.status === 'accepted') { %><p class="contact">Contact: <%= contact(r.owner_email, r.owner_phone) %></p><% if (r.offer_deposit || r.offer_fee) { %><p class="paynote">💸 Send <%= payText(r) %> to <%= r.owner_name %> by Zelle or Venmo to confirm.<%= r.offer_deposit ? ' The deposit comes back to you when you return the dress in the same condition.' : '' %></p><% } } %>
       </div>
       <div class="actions">
         <% if (r.status === 'accepted' && r.offer_swap) { %>

@@ -84,12 +84,12 @@
             <label class="check"><input type="checkbox" name="offer_deposit"> <span>Put down a deposit<%- dress.allow_deposit ? '' : unlisted %></span></label>
             <label class="indent" data-for="offer_deposit">Deposit amount ($)
               <input type="number" name="deposit_amount" min="<%= dress.min_deposit %>" max="5000" value="<%= dress.min_deposit || '' %>">
-              <small class="muted">Returned to you when the dress comes back in the same condition. Arrange payment (e.g. Venmo) directly.</small>
+              <small class="muted">Returned to you when the dress comes back in the same condition. You send it to the owner by Zelle or Venmo once they accept.</small>
             </label>
             <label class="check"><input type="checkbox" name="offer_fee"> <span>Pay a rental fee <small class="muted">(not returned)</small><%- dress.allow_fee ? '' : unlisted %></span></label>
             <label class="indent" data-for="offer_fee">Rental fee ($)
               <input type="number" name="fee_amount" min="<%= dress.allow_fee ? dress.rental_fee : 1 %>" max="5000" value="<%= dress.allow_fee && dress.rental_fee ? dress.rental_fee : '' %>">
-              <small class="muted">The owner keeps this. You can combine it with a refundable deposit.</small>
+              <small class="muted">The owner keeps this. You pay it by Zelle or Venmo once they accept. You can combine it with a refundable deposit.</small>
             </label>
             <label class="check"><input type="checkbox" name="offer_dryclean"> <span>Agree to dry clean it<%- dress.allow_dryclean ? '' : unlisted %></span></label>
             <label class="check indent" data-for="offer_dryclean"><input type="checkbox" name="dryclean_agree"> I agree to have this dress professionally dry cleaned at my expense before returning it.</label>
@@ -104,6 +104,7 @@
               <% } %>
             </label>
           </fieldset>
+          <p class="paynote">💸 Deposits and rental fees are paid directly between the two of you by Zelle or Venmo once the request is accepted. Tiger Closet doesn't handle money.</p>
           <label>Message <textarea name="message" rows="3" maxlength="1000" placeholder="Hi! I'd love to borrow this for…"></textarea></label>
           <button class="btn big" id="borrowBtn">Send request</button>
         </form>
