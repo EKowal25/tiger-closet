@@ -8,6 +8,7 @@
     r.offer_swap ? `swap for "${r.swap_title || 'a dress'}"` : null,
   ].filter(Boolean).join(' + ').replace(/^./, c => c.toUpperCase());
   const contact = (email, phone) => `${email}${phone ? ' · ' + phone : ''}`;
+  const statusLabel = (s) => ({ countered: 'counter offer', completed: 'traded' })[s] || s;
 %>
 <h1>My closet</h1>
 
@@ -18,16 +19,22 @@
     <div class="req card">
       <div>
         <strong><%= r.borrower_name %></strong><%= r.borrower_year ? " '" + String(r.borrower_year).slice(-2) : '' %> wants <a href="/dresses/<%= r.dress_id %>"><%= r.dress_title %></a>
-        <span class="status <%= r.status %>"><%= r.status %></span>
+        <span class="status <%= r.status %>"><%= statusLabel(r.status) %></span>
         <p class="muted"><%= r.event_name ? r.event_name + ' · ' : '' %><%= r.pickup_date %> → <%= r.return_date %> · <strong><%= termsText(r) %></strong></p>
         <% if (r.message) { %><p class="msg">“<%= r.message %>”</p><% } %>
+        <% if (r.status === 'countered' && r.counter) { %>
+          <div class="counter-box"><strong>Your counter offer:</strong> <%= r.counter.pickup_date %> → <%= r.counter.return_date %> · <%= termsText(r.counter) %>
+            <% if (r.counter.message) { %><p class="msg">“<%= r.counter.message %>”</p><% } %>
+            <p class="muted">Waiting for <%= r.borrower_name %> to accept or decline.</p></div>
+        <% } %>
         <% if (r.status === 'accepted') { %><p class="contact">Contact: <%= contact(r.borrower_email, r.borrower_phone) %></p><% } %>
       </div>
       <div class="actions">
         <% const act = (a, label, cls) => { %>
           <form method="post" action="/requests/<%= r.id %>/<%= a %>"><input type="hidden" name="_csrf" value="<%= csrf %>"><button class="btn <%= cls %>"><%= label %></button></form>
         <% } %>
-        <% if (r.status === 'pending') { act('accept', 'Accept', ''); act('decline', 'Decline', 'ghost'); } %>
+        <% if (r.status === 'pending') { act('accept', 'Accept', ''); %><a class="btn ghost" href="/requests/<%= r.id %>/counter">Counter</a><% act('decline', 'Decline', 'ghost'); } %>
+        <% if (r.status === 'countered') { act('withdraw', 'Withdraw counter', 'ghost'); } %>
         <% if (r.status === 'accepted' && !r.offer_swap) { act('returned', 'Mark returned', 'ghost'); } %>
         <% if (r.status === 'accepted' && r.offer_swap) { if (r.owner_got_back) { %><span class="confirmed">✓ You got yours back<%= r.borrower_got_back ? '' : ' · waiting on them' %></span><% } else { act('gotback', 'I got my dress back', 'ghost'); } } %>
       </div>
@@ -42,14 +49,22 @@
     <div class="req card">
       <div>
         <a href="/dresses/<%= r.dress_id %>"><strong><%= r.dress_title %></strong></a> from <%= r.owner_name %>
-        <span class="status <%= r.status %>"><%= r.status %></span>
-        <p class="muted"><%= r.pickup_date %> → <%= r.return_date %> · <%= termsText(r) %></p>
+        <span class="status <%= r.status %>"><%= statusLabel(r.status) %></span>
+        <p class="muted"><%= ["pending","countered"].includes(r.status) ? "You offered: " : "" %><%= r.pickup_date %> → <%= r.return_date %> · <%= termsText(r) %></p>
+        <% if (r.status === 'countered' && r.counter) { %>
+          <div class="counter-box"><strong><%= r.owner_name %>'s counter offer:</strong> <%= r.counter.pickup_date %> → <%= r.counter.return_date %> · <%= termsText(r.counter) %>
+            <% if (r.counter.message) { %><p class="msg">“<%= r.counter.message %>”</p><% } %></div>
+        <% } %>
         <% if (r.status === 'accepted') { %><p class="contact">Contact: <%= contact(r.owner_email, r.owner_phone) %></p><% } %>
       </div>
       <div class="actions">
         <% if (r.status === 'accepted' && r.offer_swap) { %>
           <% if (r.borrower_got_back) { %><span class="confirmed">✓ You got yours back<%= r.owner_got_back ? '' : ' · waiting on them' %></span>
           <% } else { %><form method="post" action="/requests/<%= r.id %>/gotback"><input type="hidden" name="_csrf" value="<%= csrf %>"><button class="btn ghost">I got my dress back</button></form><% } %>
+        <% } %>
+        <% if (r.status === 'countered') { %>
+          <form method="post" action="/requests/<%= r.id %>/accept-counter"><input type="hidden" name="_csrf" value="<%= csrf %>"><button class="btn">Accept counter</button></form>
+          <form method="post" action="/requests/<%= r.id %>/decline-counter"><input type="hidden" name="_csrf" value="<%= csrf %>"><button class="btn ghost">Decline</button></form>
         <% } %>
         <% if (['pending','accepted'].includes(r.status)) { %>
           <form method="post" action="/requests/<%= r.id %>/cancel"><input type="hidden" name="_csrf" value="<%= csrf %>"><button class="btn ghost">Cancel</button></form>
@@ -66,7 +81,7 @@
   const itemList = (t) => { %>
     <ul class="items"><% t.items.forEach(i => { %><li><a href="/dresses/<%= i.id %>"><%= i.title %></a></li><% }) %></ul>
 <% };
-  const tradeStatus = (t) => t.status === 'completed' ? 'traded' : t.status;
+  const tradeStatus = (t) => statusLabel(t.status);
   const confirmBox = (t, mine, theirs) => {
     if (mine) { %><span class="confirmed">✓ You confirmed<%= theirs ? '' : ' · waiting on them' %></span><% }
     else tradeAct(t, 'confirm', 'We’ve swapped', '');
@@ -82,10 +97,17 @@
         <span class="status <%= t.status %>"><%= tradeStatus(t) %></span>
         <% itemList(t) %>
         <% if (t.message) { %><p class="msg">“<%= t.message %>”</p><% } %>
+        <% if (t.status === 'countered' && t.counter) { %>
+          <div class="counter-box"><strong>Your counter offer:</strong> you asked for
+            <ul class="items"><% t.counterItems.forEach(i => { %><li><a href="/dresses/<%= i.id %>"><%= i.title %></a></li><% }) %></ul>
+            <% if (t.counter.message) { %><p class="msg">“<%= t.counter.message %>”</p><% } %>
+            <p class="muted">Waiting for <%= t.offerer_name %> to accept or decline.</p></div>
+        <% } %>
         <% if (t.status === 'accepted') { %><p class="contact">Contact: <%= contact(t.offerer_email, t.offerer_phone) %></p><p class="muted">Meet up to exchange dresses, then both tap “We’ve swapped”. The dresses then move to each other’s closets.</p><% } %>
       </div>
       <div class="actions">
-        <% if (t.status === 'pending') { tradeAct(t, 'accept', 'Accept trade', ''); tradeAct(t, 'decline', 'Decline', 'ghost'); } %>
+        <% if (t.status === 'pending') { tradeAct(t, 'accept', 'Accept trade', ''); %><a class="btn ghost" href="/trades/<%= t.id %>/counter">Counter</a><% tradeAct(t, 'decline', 'Decline', 'ghost'); } %>
+        <% if (t.status === 'countered') { tradeAct(t, 'withdraw', 'Withdraw counter', 'ghost'); } %>
         <% if (t.status === 'accepted') { confirmBox(t, t.owner_confirmed, t.offerer_confirmed); tradeAct(t, 'cancel', 'Call off', 'ghost'); } %>
       </div>
     </div>
@@ -101,10 +123,16 @@
         For <a href="/dresses/<%= t.dress_id %>"><strong><%= t.dress_title %></strong></a> from <%= t.owner_name %>, you offered:
         <span class="status <%= t.status %>"><%= tradeStatus(t) %></span>
         <% itemList(t) %>
+        <% if (t.status === 'countered' && t.counter) { %>
+          <div class="counter-box"><strong><%= t.owner_name %>'s counter offer:</strong> instead, they'd like
+            <ul class="items"><% t.counterItems.forEach(i => { %><li><a href="/dresses/<%= i.id %>"><%= i.title %></a></li><% }) %></ul>
+            <% if (t.counter.message) { %><p class="msg">“<%= t.counter.message %>”</p><% } %></div>
+        <% } %>
         <% if (t.status === 'accepted') { %><p class="contact">Contact: <%= contact(t.owner_email, t.owner_phone) %></p><p class="muted">Meet up to exchange dresses, then both tap “We’ve swapped”.</p><% } %>
       </div>
       <div class="actions">
         <% if (t.status === 'accepted') { confirmBox(t, t.offerer_confirmed, t.owner_confirmed); } %>
+        <% if (t.status === 'countered') { tradeAct(t, 'accept-counter', 'Accept counter', ''); tradeAct(t, 'decline-counter', 'Decline', 'ghost'); } %>
         <% if (['pending','accepted'].includes(t.status)) { tradeAct(t, 'cancel', 'Cancel', 'ghost'); } %>
       </div>
     </div>

@@ -1,0 +1,52 @@
+<%- include('partials/header') %>
+<%
+  const termsText = x => [
+    x.offer_free ? 'free' : null,
+    x.offer_fee ? '$' + x.fee_amount + ' rental fee' : null,
+    x.offer_deposit ? '$' + x.deposit_amount + ' refundable deposit' : null,
+    x.offer_dryclean ? 'dry clean before returning' : null,
+    x.offer_swap ? 'swap for "' + (x.swap_title || 'a dress') + '"' : null,
+  ].filter(Boolean).join(' + ');
+%>
+<section class="narrow card">
+  <h1>Counter offer</h1>
+  <p><strong><%= r.borrower_name %></strong> asked to borrow <a href="/dresses/<%= r.dress_id %>"><%= r.dress_title %></a>:</p>
+  <p class="note"><%= r.pickup_date %> → <%= r.return_date %> · <%= termsText(r) %></p>
+  <p class="muted">Change anything below to propose your own terms. They can accept your counter offer or decline it.</p>
+  <form method="post" action="/requests/<%= r.id %>/counter" class="stack" id="counterForm">
+    <input type="hidden" name="_csrf" value="<%= csrf %>">
+    <div class="row">
+      <label>Pick up <input type="date" name="pickup_date" value="<%= r.pickup_date %>" required></label>
+      <label>Return by <input type="date" name="return_date" value="<%= r.return_date %>" required></label>
+    </div>
+    <fieldset>
+      <legend>Your terms <small class="muted">(pick one or more)</small></legend>
+      <label class="check"><input type="checkbox" name="offer_deposit" <%= r.offer_deposit ? 'checked' : '' %>> <span>Refundable deposit</span></label>
+      <label class="indent" data-for="offer_deposit">Deposit ($) <input type="number" name="deposit_amount" min="0" max="5000" value="<%= r.offer_deposit ? r.deposit_amount : (r.min_deposit || '') %>"></label>
+      <label class="check"><input type="checkbox" name="offer_fee" <%= r.offer_fee ? 'checked' : '' %>> <span>Rental fee <small class="muted">(not returned)</small></span></label>
+      <label class="indent" data-for="offer_fee">Rental fee ($) <input type="number" name="fee_amount" min="1" max="5000" value="<%= r.offer_fee ? r.fee_amount : (r.allow_fee && r.rental_fee ? r.rental_fee : '') %>"></label>
+      <label class="check"><input type="checkbox" name="offer_dryclean" <%= r.offer_dryclean ? 'checked' : '' %>> <span>They dry clean it before returning</span></label>
+      <label class="check"><input type="checkbox" name="offer_free" <%= r.offer_free ? 'checked' : '' %>> <span>Free</span></label>
+      <label class="check"><input type="checkbox" name="offer_swap" <%= r.offer_swap ? 'checked' : '' %>> <span>Swap: they lend me one of their dresses</span></label>
+      <label class="indent" data-for="offer_swap">
+        <% if (theirDresses.length) { %>
+          <select name="swap_dress_id"><% theirDresses.forEach(d => { %><option value="<%= d.id %>" <%= d.id === r.swap_dress_id ? 'selected' : '' %>><%= d.title %></option><% }) %></select>
+        <% } else { %><small class="muted">They haven't posted any dresses to swap.</small><% } %>
+      </label>
+    </fieldset>
+    <label>Note to them <textarea name="message" rows="2" maxlength="1000" placeholder="e.g. Could you do a slightly higher deposit? It's a delicate fabric."></textarea></label>
+    <button class="btn big">Send counter offer</button>
+    <a class="links" href="/closet#received">Cancel</a>
+  </form>
+</section>
+<script>
+  const f = document.getElementById('counterForm');
+  const on = (n) => f.querySelector('input[name=' + n + ']').checked;
+  const sync = () => f.querySelectorAll('[data-for]').forEach(el => el.hidden = !on(el.dataset.for));
+  f.addEventListener('change', sync); sync();
+  f.addEventListener('submit', (e) => {
+    if (!['offer_deposit', 'offer_fee', 'offer_dryclean', 'offer_free', 'offer_swap'].some(on)) { e.preventDefault(); alert('Pick at least one term.'); }
+    else if (on('offer_free') && on('offer_fee')) { e.preventDefault(); alert('Pick either "free" or a rental fee, not both.'); }
+  });
+</script>
+<%- include('partials/footer') %>
