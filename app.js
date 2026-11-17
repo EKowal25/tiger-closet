@@ -45,6 +45,22 @@ app.use(cookieSession({
   secure: IS_PROD,
 }));
 
+// Events menu = the built-in list + any custom ("Other") event that more than PROMOTE_OVER active dresses use.
+// Spelling differences in capitals are grouped together; the most common spelling becomes the menu label.
+const PROMOTE_OVER = Number(process.env.EVENT_PROMOTE_OVER || 20);
+let eventsCache = { at: 0, list: EVENTS };
+async function allEvents() {
+  if (Date.now() - eventsCache.at < 60 * 1000) return eventsCache.list;
+  const rows = await db.all(`
+    SELECT mode() WITHIN GROUP (ORDER BY e) AS label
+    FROM dresses d, unnest(d.events) AS e
+    WHERE d.active AND lower(e) <> ALL($1)
+    GROUP BY lower(e) HAVING count(*) > $2
+    ORDER BY count(*) DESC LIMIT 30`, [EVENTS.map((e) => e.toLowerCase()), PROMOTE_OVER]);
+  eventsCache = { at: Date.now(), list: [...EVENTS, ...rows.map((r) => r.label)] };
+  return eventsCache.list;
+}
+
 // ---------- helpers ----------
 app.use(async (req, res, next) => {
   if (!req.session.csrf) req.session.csrf = crypto.randomBytes(24).toString('hex');
@@ -57,7 +73,7 @@ app.use(async (req, res, next) => {
   res.locals.path = req.path;
   res.locals.photoUrl = (p) => `/photos/${p.key}`;
   res.locals.CONDITIONS = pricing.CONDITIONS;
-  res.locals.EVENTS = EVENTS;
+  res.locals.EVENTS = await allEvents();
   res.locals.isAdmin = reviews.isAdmin(req.user);
   res.locals.stars = (n) => '★'.repeat(Math.round(n)) + '☆'.repeat(5 - Math.round(n));
   next();
@@ -168,7 +184,7 @@ app.get('/browse', requireAuth, async (req, res) => {
   if (filters.q) { const p = add(`%${filters.q}%`); where.push(`(d.title ILIKE ${p} OR d.designer ILIKE ${p} OR d.color ILIKE ${p} OR d.description ILIKE ${p})`); }
   if (filters.size) where.push(`d.size = ${add(filters.size)}`);
   if (filters.length) where.push(`d.length = ${add(filters.length)}`);
-  if (EVENTS.includes(filters.event)) where.push(`${add(filters.event)} = ANY(d.events)`);
+  if (filters.event) where.push(`EXISTS (SELECT 1 FROM unnest(d.events) AS e WHERE lower(e) = lower(${add(filters.event)}))`);
   if (filters.terms === 'deposit') where.push('d.allow_deposit');
   if (filters.terms === 'dryclean') where.push('d.allow_dryclean');
   if (filters.terms === 'free') where.push('d.allow_free');
@@ -181,8 +197,24 @@ app.get('/browse', requireAuth, async (req, res) => {
   res.render('browse', { title: 'Browse dresses', dresses, filters, SIZES, LENGTHS });
 });
 
+// Events picked from the menu, plus one optional custom event typed under "Other".
+function readEvents(b, menu) {
+  const picked = [].concat(b.events || []).filter((e) => menu.includes(e));
+  if (b.event_other_on) {
+    // Letters, numbers and simple punctuation only; tidy spaces; capitalize the first letter.
+    let other = clean(b.event_other, 40).replace(/[^\p{L}\p{N} &'’/+-]/gu, '').replace(/\s+/g, ' ').trim();
+    if (other.length >= 3) {
+      other = other[0].toUpperCase() + other.slice(1);
+      const known = menu.find((e) => e.toLowerCase() === other.toLowerCase());
+      picked.push(known || other);
+    }
+  }
+  const seen = new Set();
+  return picked.filter((e) => !seen.has(e.toLowerCase()) && seen.add(e.toLowerCase())).slice(0, 10);
+}
+
 // Reads the listing fields shared by "post" and "edit".
-function readListing(b) {
+function readListing(b, menu) {
   const f = {
     title: clean(b.title, 100),
     designer: clean(b.designer, 60),
@@ -193,7 +225,7 @@ function readListing(b) {
     allow_deposit: !!b.allow_deposit,
     allow_dryclean: !!b.allow_dryclean,
     allow_free: !!b.allow_free,
-    events: [...new Set([].concat(b.events || []))].filter((e) => EVENTS.includes(e)),
+    events: readEvents(b, menu),
     allow_fee: !!b.allow_fee,
     allow_swap: !!b.allow_swap,
     open_to_trade: !!b.open_to_trade,
@@ -228,7 +260,7 @@ app.get('/dresses/:id/edit', requireAuth, async (req, res) => {
 
 app.post('/dresses/:id/edit', requireAuth, checkCsrf, async (req, res) => {
   const id = toInt(req.params.id);
-  const { f, errors } = readListing(req.body);
+  const { f, errors } = readListing(req.body, res.locals.EVENTS);
   if (errors.length) { flash(req, errors.join(' '), 'err'); return res.redirect(`/dresses/${id}/edit`); }
   const d = await db.one(`
     UPDATE dresses SET title = $1, designer = $2, size = $3, color = $4, length = $5, description = $6,
@@ -242,12 +274,13 @@ app.post('/dresses/:id/edit', requireAuth, checkCsrf, async (req, res) => {
   if (!f.open_to_trade) {
     await db.all(`UPDATE trades SET status = 'declined', updated_at = now() WHERE dress_id = $1 AND status IN ('pending','countered')`, [id]);
   }
+  eventsCache.at = 0; // refresh the events menu
   flash(req, 'Listing updated.');
   res.redirect(`/dresses/${id}`);
 });
 
 app.post('/dresses', requireAuth, upload.array('photos', 6), checkCsrf, async (req, res) => {
-  const { f, errors } = readListing(req.body);
+  const { f, errors } = readListing(req.body, res.locals.EVENTS);
   if (!req.files || req.files.length === 0) errors.push('Add at least one photo (JPG, PNG, WEBP or HEIC).');
   if (errors.length) {
     flash(req, errors.join(' '), 'err');
@@ -266,6 +299,7 @@ app.post('/dresses', requireAuth, upload.array('photos', 6), checkCsrf, async (r
       f.allow_deposit, f.min_deposit, f.allow_dryclean, f.allow_swap, f.open_to_trade,
       f.allow_free, f.allow_fee, f.rental_fee, f.condition, f.retail_price, f.retail_estimated, f.events]);
     await db.all(`INSERT INTO photos (dress_id, key, position) SELECT $1, k, i - 1 FROM unnest($2::text[]) WITH ORDINALITY AS t(k, i)`, [d.id, keys]);
+    eventsCache.at = 0; // refresh the events menu
     flash(req, 'Your dress is posted!');
     go(req, res, `/dresses/${d.id}`);
   } catch (e) {

@@ -6,7 +6,7 @@
 <form class="filters" method="get">
   <input name="q" value="<%= filters.q %>" placeholder="Search color, designer, style…">
   <select name="size"><option value="">Any size</option><% SIZES.forEach(s => { %><option <%= filters.size === s ? 'selected' : '' %>><%= s %></option><% }) %></select>
-  <select name="event"><option value="">Any event</option><% EVENTS.forEach(ev => { %><option <%= filters.event === ev ? 'selected' : '' %>><%= ev %></option><% }) %></select>
+  <select name="event"><option value="">Any event</option><% EVENTS.forEach(ev => { %><option <%= filters.event.toLowerCase() === ev.toLowerCase() ? 'selected' : '' %>><%= ev %></option><% }) %><% if (filters.event && !EVENTS.some(ev => ev.toLowerCase() === filters.event.toLowerCase())) { %><option selected><%= filters.event %></option><% } %></select>
   <select name="length"><option value="">Any length</option><% LENGTHS.forEach(l => { %><option <%= filters.length === l ? 'selected' : '' %>><%= l %></option><% }) %></select>
   <select name="terms">
     <option value="">Any terms</option>

@@ -73,7 +73,7 @@
         <form method="post" action="/dresses/<%= dress.id %>/request" class="card stack" id="reqForm">
           <h2 id="borrowTitle">Borrow it</h2>
           <input type="hidden" name="_csrf" value="<%= csrf %>">
-          <label>Event <input name="event_name" maxlength="80" placeholder="Ivy formal, Princeton Prom…"></label>
+          <label>Event <input name="event_name" maxlength="80" placeholder="Ivy formal, Winter formal, Lawnparties…"></label>
           <div class="row">
             <label>Pick up <input type="date" name="pickup_date" required></label>
             <label>Return by <input type="date" name="return_date" required></label>
