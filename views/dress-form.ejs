@@ -24,10 +24,16 @@
     <fieldset>
       <legend>Best for <small class="muted">(pick one or more events)</small></legend>
       <div class="chips">
+        <% const mine = (d.events || []); const custom = mine.find(e => !EVENTS.some(k => k.toLowerCase() === e.toLowerCase())) || ''; %>
         <% EVENTS.forEach(ev => { %>
-          <label class="chip"><input type="checkbox" name="events" value="<%= ev %>" <%= (d.events || []).includes(ev) ? 'checked' : '' %>><span><%= ev %></span></label>
+          <label class="chip"><input type="checkbox" name="events" value="<%= ev %>" <%= mine.some(e => e.toLowerCase() === ev.toLowerCase()) ? 'checked' : '' %>><span><%= ev %></span></label>
         <% }) %>
+        <label class="chip"><input type="checkbox" name="event_other_on" id="eventOtherOn" <%= custom ? 'checked' : '' %>><span>Other…</span></label>
       </div>
+      <label id="eventOtherWrap" <%= custom ? '' : 'hidden' %>>What's the event?
+        <input name="event_other" id="eventOther" maxlength="40" value="<%= custom %>" placeholder="e.g. Winter formal, Sorority semi, Gala">
+        <small class="muted suggest">Keep it short, like a title. If lots of dresses use the same event, it gets added to the menu for everyone.</small>
+      </label>
     </fieldset>
     <label>Description <textarea name="description" rows="4" maxlength="2000" placeholder="Fit notes, fabric, any wear, when it's available…"><%= v('description') %></textarea></label>
 
@@ -68,11 +74,13 @@
   </form>
 </section>
 <script>
+  const otherOn = document.getElementById('eventOtherOn'), otherWrap = document.getElementById('eventOtherWrap'), otherText = document.getElementById('eventOther');
+  otherOn.addEventListener('change', () => { otherWrap.hidden = !otherOn.checked; if (otherOn.checked) otherText.focus(); });
   document.getElementById('dressForm').addEventListener('submit', (e) => {
-    if (!document.querySelector('input[name=events]:checked')) {
-      e.preventDefault(); e.stopImmediatePropagation();
-      alert('Pick at least one event this dress works best for.');
-    }
+    const typed = otherOn.checked && otherText.value.trim().length >= 3;
+    const stop = (msg) => { e.preventDefault(); e.stopImmediatePropagation(); alert(msg); };
+    if (otherOn.checked && !typed) return stop('Type the event name next to "Other" (at least 3 letters), or untick it.');
+    if (!document.querySelector('input[name=events]:checked') && !typed) stop('Pick at least one event this dress works best for.');
   }, true);
 </script>
 <script src="/pricing.js"></script>
